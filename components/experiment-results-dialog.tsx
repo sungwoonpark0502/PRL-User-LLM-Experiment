@@ -178,7 +178,7 @@ export function ExperimentResultsDialog({
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="overview">Performance Summary</TabsTrigger>
+            <TabsTrigger value="overview">Summary</TabsTrigger>
             <TabsTrigger value="chat">Chat History</TabsTrigger>
           </TabsList>
 

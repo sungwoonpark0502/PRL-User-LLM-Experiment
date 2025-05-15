@@ -19,6 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { SettingsDialog } from "@/components/settings-dialog"
 import CodeEditor from "@/components/code-editor"
 import { useRouter } from "next/navigation"
+import { getLLMResponse } from "@/lib/openai"
 
 type MessageRole = "user" | "assistant"
 
@@ -298,24 +299,33 @@ export default function Home() {
     }
   }, [messages])
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (inputValue.trim()) {
       setIsSendingMessage(true)
-
-      // Simulate API call delay
-      setTimeout(() => {
+  
+      try {
         const newMessages: Message[] = [
           ...messages,
           { role: "user" as MessageRole, content: inputValue },
-          {
-            role: "assistant" as MessageRole,
-            content: `This is a simulated response from ${selectedLLM}. In a real implementation, this would be connected to the actual LLM API.`,
-          },
         ]
         setMessages(newMessages)
+  
+        const llmReply = await getLLMResponse(inputValue)
+  
+        setMessages([
+          ...newMessages,
+          { role: "assistant" as MessageRole, content: llmReply },
+        ])
         setInputValue("")
+      } catch (error) {
+        setMessages([
+          ...messages,
+          { role: "user" as MessageRole, content: inputValue },
+          { role: "assistant" as MessageRole, content: "Failed to get LLM response." },
+        ])
+      } finally {
         setIsSendingMessage(false)
-      }, 500)
+      }
     }
   }
 
@@ -491,7 +501,7 @@ export default function Home() {
       <header className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-3 flex justify-between items-center shadow-sm">
         <div className="flex-1 text-center">
           <h1 className="text-xl font-semibold dark:text-white">LLM Experiment</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">People and Robots Lab - Experimental Tool</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">People and Robots Lab</p>
         </div>
         <div className="flex items-center space-x-2">
           <TooltipProvider>
@@ -634,9 +644,9 @@ export default function Home() {
               {messages.length === 0 ? (
                 <div className="text-center text-gray-500 dark:text-gray-400 my-6">
                   <MessageSquare className="mx-auto h-10 w-10 opacity-50 mb-2" />
-                  <p>No messages yet. Start a conversation!</p>
+                  <p>No messages yet.</p>
                   <p className="text-sm mt-2 max-w-xs mx-auto">
-                    Ask questions about the tasks or request assistance with the reading, writing, or coding exercises.
+                    For reference only
                   </p>
                 </div>
               ) : (

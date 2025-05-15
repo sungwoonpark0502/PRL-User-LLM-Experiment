@@ -703,7 +703,7 @@ export default function ResearcherPage() {
                       <div className="col-span-2 relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
                         <Input
-                          placeholder="Search questions..."
+                          placeholder="Search..."
                           className="w-full pl-9"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -921,7 +921,7 @@ export default function ResearcherPage() {
                         </Label>
                         <Select value={selectedExperimentLLM} onValueChange={setSelectedExperimentLLM}>
                           <SelectTrigger id="experiment-llm">
-                            <SelectValue placeholder="Select LLM for experiment" />
+                            <SelectValue placeholder="Select LLM" />
                           </SelectTrigger>
                           <SelectContent>
                             {llmMappings.length === 0 ? (
@@ -1047,7 +1047,7 @@ export default function ResearcherPage() {
                   <div className="flex justify-end space-x-3 pt-4">
                     <Button variant="outline" size="default" onClick={handleSaveConfiguration}>
                       <Save className="h-4 w-4 mr-2" />
-                      Save Draft
+                      Save
                     </Button>
                     <Button
                       size="default"
@@ -1055,7 +1055,7 @@ export default function ResearcherPage() {
                       className="px-8"
                       disabled={!experimentName.trim() || (!selectedExperimentLLM && llmMappings.length > 0)}
                     >
-                      Create Experiment
+                      Create
                     </Button>
                   </div>
 
@@ -1101,7 +1101,7 @@ export default function ResearcherPage() {
                                       </Label>
                                       <Select value={editingLLMId} onValueChange={setEditingLLMId}>
                                         <SelectTrigger id={`edit-llm-${experiment.id}`}>
-                                          <SelectValue placeholder="Select LLM for experiment" />
+                                          <SelectValue placeholder="Select LLM" />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {llmMappings.map((mapping) => (

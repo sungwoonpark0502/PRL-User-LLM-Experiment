@@ -56,7 +56,7 @@ export function ResearcherLoginDialog({ open, onOpenChange, onLogin }: Researche
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Researcher Access</DialogTitle>
-          <DialogDescription>Enter your password to access the researcher dashboard.</DialogDescription>
+          <DialogDescription>Enter your password</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
