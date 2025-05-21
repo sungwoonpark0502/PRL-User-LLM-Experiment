@@ -167,7 +167,7 @@ export function ExperimentResultsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl">Results: {mockResults.experimentName}</DialogTitle>
           <DialogDescription>
@@ -178,13 +178,13 @@ export function ExperimentResultsDialog({
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="overview">Summary</TabsTrigger>
+            <TabsTrigger value="overview">Performance Summary</TabsTrigger>
             <TabsTrigger value="chat">Chat History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 overflow-hidden flex flex-col p-1">
-            <ScrollArea className="flex-1">
-              <div className="space-y-4 pr-2">
+            <ScrollArea className="flex-1 w-full">
+              <div className="space-y-4 pr-2 pb-4">
                 <div className="grid grid-cols-2 gap-4">
                   <Card className="p-4">
                     <div className="text-sm font-medium mb-2">Reading</div>
@@ -287,6 +287,18 @@ export function ExperimentResultsDialog({
                       <div className="text-xs text-muted-foreground">Question {index + 1}</div>
                     </div>
                     <div className="text-sm mb-2">{result.question}</div>
+
+                    <div className="mt-2 space-y-2">
+                      <div className="text-xs font-medium">User Answer:</div>
+                      <div className="text-xs bg-muted p-2 rounded whitespace-pre-wrap">{result.userAnswer}</div>
+
+                      {!result.correct && result.correctAnswer && (
+                        <>
+                          <div className="text-xs font-medium">Correct Answer:</div>
+                          <div className="text-xs bg-muted p-2 rounded whitespace-pre-wrap">{result.correctAnswer}</div>
+                        </>
+                      )}
+                    </div>
                   </Card>
                 ))}
               </div>
@@ -294,8 +306,8 @@ export function ExperimentResultsDialog({
           </TabsContent>
 
           <TabsContent value="chat" className="flex-1 overflow-hidden flex flex-col p-1">
-            <ScrollArea className="flex-1">
-              <div className="space-y-4 pr-2">
+            <ScrollArea className="flex-1 w-full">
+              <div className="space-y-4 pr-2 pb-4">
                 {mockResults.results
                   .filter((result) => result.chatHistory && result.chatHistory.length > 0)
                   .map((result, index) => (

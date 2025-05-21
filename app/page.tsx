@@ -310,7 +310,7 @@ export default function Home() {
         ]
         setMessages(newMessages)
   
-        const llmReply = await getLLMResponse(inputValue)
+        const llmReply = await getLLMResponse(inputValue, selectedLLM) // 👈 pass selectedLLM nickname
   
         setMessages([
           ...newMessages,
@@ -320,8 +320,7 @@ export default function Home() {
       } catch (error) {
         setMessages([
           ...messages,
-          { role: "user" as MessageRole, content: inputValue },
-          { role: "assistant" as MessageRole, content: "Failed to get LLM response." },
+          { role: "assistant", content: "LLM call failed." },
         ])
       } finally {
         setIsSendingMessage(false)

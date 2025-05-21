@@ -20,7 +20,6 @@ import {
   Upload,
   Plus,
   Trash2,
-  Save,
   ArrowLeft,
   Search,
   Edit,
@@ -34,6 +33,9 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearcherLoginDialog } from "@/components/researcher-login-dialog"
 import { Separator } from "@/components/ui/separator"
 import { ExperimentResultsDialog } from "@/components/experiment-results-dialog"
+import { FileSpreadsheet } from "lucide-react"
+import { FileUploadParser } from "@/components/file-upload-parser"
+import { ImageIcon } from "lucide-react"
 
 // Define types for our question pools
 type Difficulty = "easy" | "medium" | "hard"
@@ -42,10 +44,11 @@ type Section = "reading" | "writing" | "coding" | "mixed"
 // First, let's update our Question type to include associated files
 interface Question {
   id: string
-  content: string
+  question: string // Changed from 'content' to 'question'
   difficulty: Difficulty
   section: Section
   files?: string[] // Add files array to store associated file names
+  image?: string // Add image property
 }
 
 interface LLMMapping {
@@ -103,7 +106,7 @@ export default function ResearcherPage() {
   // State for editing experiments
   const [editingExperimentId, setEditingExperimentId] = useState<string | null>(null)
   const [editingQuestionCounts, setEditingQuestionCounts] = useState<Record<string, number>>({})
-  const [editingLLMId, setEditingLLMId] = useState<string>("")
+  const [editingExperimentLLMId, setEditingExperimentLLMId] = useState<string>("")
 
   // State for viewing experiment results
   const [viewingExperimentId, setViewingExperimentId] = useState<string | null>(null)
@@ -132,49 +135,59 @@ export default function ResearcherPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showLoginDialog, setShowLoginDialog] = useState(true)
 
+  // Add a new state for showing the file upload parser
+  const [showFileUploadParser, setShowFileUploadParser] = useState(false)
+
+  // Add a new state for editing LLM mappings
+  const [editingLLMMappingId, setEditingLLMMappingId] = useState<string | null>(null)
+  const [editingLLMModel, setEditingLLMModel] = useState<string>("")
+
+  // Add a new state for editing the LLM display name
+  const [editingLLMDisplayName, setEditingLLMDisplayName] = useState<string>("")
+
   // Load sample questions on mount
   useEffect(() => {
     // In a real app, you would fetch this from a database
     const sampleQuestions: Question[] = [
       {
         id: "1",
-        content: "Read the passage and identify the main theme.",
+        question: "Read the passage and identify the main theme.", // Changed from 'content' to 'question'
         difficulty: "easy",
         section: "reading",
       },
       {
         id: "2",
-        content: "Analyze the given text and explain how machine learning differs from traditional programming.",
+        question: "Analyze the given text and explain how machine learning differs from traditional programming.", // Changed from 'content' to 'question'
         difficulty: "medium",
         section: "reading",
       },
       {
         id: "3",
-        content: "Write an essay about the impact of technology on society.",
+        question: "Write an essay about the impact of technology on society.",
         difficulty: "medium",
         section: "writing",
       },
       {
         id: "4",
-        content: "Write a short essay discussing the ethical implications of AI in healthcare.",
+        question: "Write a short essay discussing the ethical implications of AI in healthcare.",
         difficulty: "hard",
         section: "writing",
       },
       {
         id: "5",
-        content: "Implement a function to find the factorial of a number.",
+        question: "Implement a function to find the factorial of a number.",
         difficulty: "easy",
         section: "coding",
       },
       {
         id: "6",
-        content: "Create a function that implements the merge sort algorithm.",
+        question: "Create a function that implements the merge sort algorithm.",
         difficulty: "hard",
         section: "coding",
       },
       {
         id: "7",
-        content: "Read the passage and write code to solve the described problem.",
+        question: "Read the passage and write code to solve the described problem.",
         difficulty: "medium",
         section: "mixed",
       },
@@ -211,6 +224,31 @@ export default function ResearcherPage() {
     setExperiments(sampleExperiments)
   }, [])
 
+  // Add a handler for importing questions
+  const handleQuestionsImported = (importedQuestions: any[]) => {
+    // Convert imported questions to the format expected by the app
+    const newQuestions = importedQuestions.map((q) => ({
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      question: q.question,
+      difficulty: q.difficulty,
+      section: q.section,
+      image: q.image, // Add image property
+    }))
+
+    // Add the new questions to the existing questions
+    setQuestions([...questions, ...newQuestions])
+
+    // Close the file upload parser
+    setShowFileUploadParser(false)
+
+    // If there are images, add them to uploadedMaterials
+    const allImages = importedQuestions.filter((q) => q.image).map((q) => q.image)
+
+    if (allImages.length > 0) {
+      setUploadedMaterials([...uploadedMaterials, ...allImages])
+    }
+  }
+
   // Filter questions based on selected filters and search query
   const filteredQuestions = questions.filter((question) => {
     // Filter by section
@@ -224,7 +262,7 @@ export default function ResearcherPage() {
     }
 
     // Filter by search query
-    if (searchQuery.trim() !== "" && !question.content.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (searchQuery.trim() !== "" && !question.question.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
     }
 
@@ -274,7 +312,7 @@ export default function ResearcherPage() {
     if (newQuestion.trim() || pendingUploads.length > 0) {
       const newQuestionObj: Question = {
         id: Date.now().toString(),
-        content: newQuestion.trim(),
+        question: newQuestion.trim(),
         difficulty: selectedDifficulty,
         section: selectedSection,
         files: pendingUploads.length > 0 ? [...pendingUploads] : undefined,
@@ -318,6 +356,34 @@ export default function ResearcherPage() {
     })
   }
 
+  // Update the handleStartEditLLMMapping function to also set the display name
+  const handleStartEditLLMMapping = (mapping: LLMMapping) => {
+    setEditingLLMMappingId(mapping.id)
+    setEditingLLMModel(mapping.realName)
+    setEditingLLMDisplayName(mapping.displayName)
+  }
+
+  // Update the handleSaveEditLLMMapping function to save the updated display name
+  const handleSaveEditLLMMapping = (id: string) => {
+    setLlmMappings(
+      llmMappings.map((mapping) =>
+        mapping.id === id
+          ? {
+              ...mapping,
+              realName: editingLLMModel,
+              displayName: editingLLMDisplayName,
+            }
+          : mapping,
+      ),
+    )
+    setEditingLLMMappingId(null)
+
+    toast({
+      title: "Mapping Updated",
+      description: "The LLM mapping has been updated successfully.",
+    })
+  }
+
   const handleAddLLMMapping = () => {
     if (selectedLLM && newLLMDisplayName.trim()) {
       const newMapping: LLMMapping = {
@@ -347,14 +413,6 @@ export default function ResearcherPage() {
     toast({
       title: "File Deleted",
       description: "The file has been removed.",
-    })
-  }
-
-  const handleSaveConfiguration = () => {
-    // In a real app, you would save this configuration to a database
-    toast({
-      title: "Saved",
-      description: "Your experiment configuration has been saved.",
     })
   }
 
@@ -430,7 +488,7 @@ export default function ResearcherPage() {
   const handleStartEditExperiment = (experiment: Experiment) => {
     setEditingExperimentId(experiment.id)
     setEditingQuestionCounts(experiment.questionCounts)
-    setEditingLLMId(experiment.llmId)
+    setEditingExperimentLLMId(experiment.llmId)
   }
 
   // Save edited experiment
@@ -440,7 +498,7 @@ export default function ResearcherPage() {
         exp.id === id
           ? {
               ...exp,
-              llmId: editingLLMId,
+              llmId: editingExperimentLLMId,
               questionCounts: {
                 reading: editingQuestionCounts.reading || 0,
                 writing: editingQuestionCounts.writing || 0,
@@ -483,9 +541,24 @@ export default function ResearcherPage() {
 
   // Reset filters
   const handleResetFilters = () => {
+    // Reset filters
     setFilterSection("all-sections")
     setFilterDifficulty("all-difficulties")
     setSearchQuery("")
+
+    // Reset questions
+    setQuestions([])
+    setUploadedMaterials([])
+
+    toast({
+      title: "Reset Complete",
+      description: "All questions have been cleared and filters have been reset.",
+    })
+  }
+
+  // Cancel editing LLM Mapping
+  const handleCancelEditLLMMapping = () => {
+    setEditingLLMMappingId(null)
   }
 
   // If not authenticated, show login dialog
@@ -529,8 +602,21 @@ export default function ResearcherPage() {
           <TabsContent value="questions" className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle>Questions</CardTitle>
-                <CardDescription>Add and manage questions for each section.</CardDescription>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle>Questions</CardTitle>
+                    <CardDescription>Add and manage questions for each section.</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowFileUploadParser(true)}
+                    className="flex items-center gap-1"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Import from File
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-4">
@@ -611,7 +697,7 @@ export default function ResearcherPage() {
                         </Button>
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Supported: PDF, DOCX, TXT, JPG, PNG (Max 10MB)
+                        Supported: JPG, PNG (Max 10MB)
                       </div>
 
                       {/* Display pending uploads */}
@@ -703,7 +789,7 @@ export default function ResearcherPage() {
                       <div className="col-span-2 relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
                         <Input
-                          placeholder="Search..."
+                          placeholder="Search questions..."
                           className="w-full pl-9"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -764,8 +850,8 @@ export default function ResearcherPage() {
                                     {question.section}
                                   </Badge>
                                 </div>
-                                {question.content && (
-                                  <p className="text-sm dark:text-gray-300 mb-2">{question.content}</p>
+                                {question.question && (
+                                  <p className="text-sm dark:text-gray-300 mb-2">{question.question}</p>
                                 )}
                                 {question.files && question.files.length > 0 && (
                                   <div className="mt-1">
@@ -777,6 +863,15 @@ export default function ResearcherPage() {
                                         </Badge>
                                       ))}
                                     </div>
+                                  </div>
+                                )}
+                                {question.image && (
+                                  <div className="mt-1">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Attached Image:</p>
+                                    <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                                      <ImageIcon className="h-3 w-3" />
+                                      {question.image}
+                                    </Badge>
                                   </div>
                                 )}
                               </div>
@@ -860,29 +955,94 @@ export default function ResearcherPage() {
                         </p>
                       ) : (
                         llmMappings.map((mapping) => (
-                          <div
-                            key={mapping.id}
-                            className="p-3 border rounded-md flex items-center justify-between dark:border-gray-700"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div>
-                                <p className="text-sm font-medium dark:text-gray-200">LLM:</p>
-                                <p className="text-sm dark:text-gray-300">{mapping.realName}</p>
+                          <div key={mapping.id} className="p-3 border rounded-md dark:border-gray-700">
+                            {editingLLMMappingId === mapping.id ? (
+                              // Editing mode
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <h4 className="font-medium">Edit LLM Mapping</h4>
+                                  <div className="flex space-x-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleSaveEditLLMMapping(mapping.id)}
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <Check className="h-4 w-4 text-green-500" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={handleCancelEditLLMMapping}
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <X className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`edit-llm-model-${mapping.id}`} className="text-sm">
+                                    LLM Model
+                                  </Label>
+                                  <Select value={editingLLMModel} onValueChange={setEditingLLMModel}>
+                                    <SelectTrigger id={`edit-llm-model-${mapping.id}`}>
+                                      <SelectValue placeholder="Select LLM model" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableLLMs.map((llm) => (
+                                        <SelectItem key={llm.value} value={llm.value}>
+                                          {llm.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`edit-display-name-${mapping.id}`} className="text-sm">
+                                    Display Name
+                                  </Label>
+                                  <Input
+                                    id={`edit-display-name-${mapping.id}`}
+                                    value={editingLLMDisplayName}
+                                    onChange={(e) => setEditingLLMDisplayName(e.target.value)}
+                                    placeholder="e.g., Sarah"
+                                  />
+                                </div>
                               </div>
-                              <div className="text-gray-500 dark:text-gray-400">→</div>
-                              <div>
-                                <p className="text-sm font-medium dark:text-gray-200">Name:</p>
-                                <p className="text-sm dark:text-gray-300">{mapping.displayName}</p>
+                            ) : (
+                              // View mode
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                  <div>
+                                    <p className="text-sm font-medium dark:text-gray-200">LLM:</p>
+                                    <p className="text-sm dark:text-gray-300">{mapping.realName}</p>
+                                  </div>
+                                  <div className="text-gray-500 dark:text-gray-400">→</div>
+                                  <div>
+                                    <p className="text-sm font-medium dark:text-gray-200">Name:</p>
+                                    <p className="text-sm dark:text-gray-300">{mapping.displayName}</p>
+                                  </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleStartEditLLMMapping(mapping)}
+                                    className="h-8 w-8"
+                                  >
+                                    <Edit className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteLLMMapping(mapping.id)}
+                                    className="h-8 w-8"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteLLMMapping(mapping.id)}
-                              className="h-8 w-8"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                            )}
                           </div>
                         ))
                       )}
@@ -921,7 +1081,7 @@ export default function ResearcherPage() {
                         </Label>
                         <Select value={selectedExperimentLLM} onValueChange={setSelectedExperimentLLM}>
                           <SelectTrigger id="experiment-llm">
-                            <SelectValue placeholder="Select LLM" />
+                            <SelectValue placeholder="Select LLM for experiment" />
                           </SelectTrigger>
                           <SelectContent>
                             {llmMappings.length === 0 ? (
@@ -1045,17 +1205,13 @@ export default function ResearcherPage() {
                   </div>
 
                   <div className="flex justify-end space-x-3 pt-4">
-                    <Button variant="outline" size="default" onClick={handleSaveConfiguration}>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save
-                    </Button>
                     <Button
                       size="default"
                       onClick={handleGenerateExperiment}
                       className="px-8"
                       disabled={!experimentName.trim() || (!selectedExperimentLLM && llmMappings.length > 0)}
                     >
-                      Create
+                      Create Experiment
                     </Button>
                   </div>
 
@@ -1099,9 +1255,9 @@ export default function ResearcherPage() {
                                       <Label htmlFor={`edit-llm-${experiment.id}`} className="text-sm">
                                         LLM Selection
                                       </Label>
-                                      <Select value={editingLLMId} onValueChange={setEditingLLMId}>
+                                      <Select value={editingExperimentLLMId} onValueChange={setEditingExperimentLLMId}>
                                         <SelectTrigger id={`edit-llm-${experiment.id}`}>
-                                          <SelectValue placeholder="Select LLM" />
+                                          <SelectValue placeholder="Select LLM for experiment" />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {llmMappings.map((mapping) => (
@@ -1270,6 +1426,16 @@ export default function ResearcherPage() {
         experimentId={viewingExperimentId}
         llmMappings={llmMappings}
       />
+      {showFileUploadParser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl">
+            <FileUploadParser
+              onQuestionsImported={handleQuestionsImported}
+              onClose={() => setShowFileUploadParser(false)}
+            />
+          </div>
+        </div>
+      )}
     </main>
   )
 }
