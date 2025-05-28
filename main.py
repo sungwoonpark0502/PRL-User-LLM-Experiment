@@ -21,12 +21,13 @@ class ChatRequest(BaseModel):
 @app.post("/chat/openai")
 async def chat_openai(request: ChatRequest):
     try:
-        # Send prompt to OpenAI and get response
+        # Sends prompt to GPT-3.5 and gets response
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": request.prompt}]
         )
-        # Return the assistant's reply
+        # return the assistant's reply
         return {"response": response.choices[0].message.content}
     except Exception as e:
+         # something went wrong so throw a 500 with the error message
         raise HTTPException(status_code=500, detail=str(e))
