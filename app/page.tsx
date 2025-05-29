@@ -66,10 +66,20 @@ interface CodingChallenge {
   defaultCode: string
 }
 
+// Add LLM mapping constant
+const LLM_MAPPINGS = {
+  "gpt-4": "Sarah",
+  "gpt-3.5-turbo": "Peter",
+  "claude-3-opus": "James",
+  "llama-3-70b": "Emily",
+  "mistral-large": "Michael",
+  "gemini-pro": "Emily"
+} as const
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
-  const [selectedLLM, setSelectedLLM] = useState("gpt-4")
+  const [selectedLLM, setSelectedLLM] = useState("Sarah") // Changed default to display name
   const [selectedLanguage, setSelectedLanguage] = useState("javascript")
   const [userAnswer, setUserAnswer] = useState("")
   const [userEssay, setUserEssay] = useState("")
@@ -300,31 +310,27 @@ export default function Home() {
   }, [messages])
 
   const handleSendMessage = async () => {
-    if (inputValue.trim()) {
-      setIsSendingMessage(true)
-  
-      try {
-        const newMessages: Message[] = [
-          ...messages,
-          { role: "user" as MessageRole, content: inputValue },
-        ]
-        setMessages(newMessages)
-  
-        const llmReply = await getLLMResponse(inputValue, selectedLLM) // 👈 pass selectedLLM nickname
-  
-        setMessages([
-          ...newMessages,
-          { role: "assistant" as MessageRole, content: llmReply },
-        ])
-        setInputValue("")
-      } catch (error) {
-        setMessages([
-          ...messages,
-          { role: "assistant", content: "LLM call failed." },
-        ])
-      } finally {
-        setIsSendingMessage(false)
-      }
+    if (!inputValue.trim() || isSendingMessage) return
+
+    setIsSendingMessage(true)
+    const userMessage = inputValue.trim()
+    setInputValue("")
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }])
+
+    try {
+      // Use the display name from the mapping
+      const displayName = LLM_MAPPINGS[selectedLLM as keyof typeof LLM_MAPPINGS] || selectedLLM
+      const llmReply = await getLLMResponse(userMessage, displayName)
+      setMessages((prev) => [...prev, { role: "assistant", content: llmReply }])
+    } catch (error) {
+      console.error("Error getting LLM response:", error)
+      toast({
+        title: "Error",
+        description: "Failed to get response from LLM. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingMessage(false)
     }
   }
 
@@ -560,11 +566,10 @@ export default function Home() {
                         <SelectValue placeholder="Select LLM" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="gpt-4">Sarah</SelectItem>
-                        <SelectItem value="gpt-3.5">Peter</SelectItem>
-                        <SelectItem value="claude">James</SelectItem>
-                        <SelectItem value="llama">Emily</SelectItem>
-                        <SelectItem value="mistral">Michael</SelectItem>
+                        <SelectItem value="Sarah">GPT-4 (Sarah)</SelectItem>
+                        <SelectItem value="Peter">GPT-3.5 Turbo (Peter)</SelectItem>
+                        <SelectItem value="James">Claude 3 Opus (James)</SelectItem>
+                        <SelectItem value="Emily">Gemini Pro (Emily)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -623,15 +628,14 @@ export default function Home() {
                   Select LLM Model
                 </Label>
                 <Select value={selectedLLM} onValueChange={setSelectedLLM}>
-                  <SelectTrigger id="llm-select" className="w-full mt-1">
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Select LLM" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-4">Sarah</SelectItem>
-                    <SelectItem value="gpt-3.5">Peter</SelectItem>
-                    <SelectItem value="claude">James</SelectItem>
-                    <SelectItem value="llama">Emily</SelectItem>
-                    <SelectItem value="mistral">Michael</SelectItem>
+                    <SelectItem value="Sarah">GPT-4 (Sarah)</SelectItem>
+                    <SelectItem value="Peter">GPT-3.5 Turbo (Peter)</SelectItem>
+                    <SelectItem value="James">Claude 3 Opus (James)</SelectItem>
+                    <SelectItem value="Emily">Gemini Pro (Emily)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
