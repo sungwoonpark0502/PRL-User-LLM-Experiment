@@ -20,6 +20,7 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import CodeEditor from "@/components/code-editor"
 import { useRouter } from "next/navigation"
 import { getLLMResponse } from "@/lib/openai"
+import { LLM_MAPPINGS } from '@/lib/config'
 
 type MessageRole = "user" | "assistant"
 
@@ -66,20 +67,10 @@ interface CodingChallenge {
   defaultCode: string
 }
 
-// Add LLM mapping constant
-const LLM_MAPPINGS = {
-  "gpt-4": "Sarah",
-  "gpt-3.5-turbo": "Peter",
-  "claude-3-opus": "James",
-  "llama-3-70b": "Emily",
-  "mistral-large": "Michael",
-  "gemini-pro": "Emily"
-} as const
-
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
-  const [selectedLLM, setSelectedLLM] = useState("Sarah") // Changed default to display name
+  const [selectedLLM, setSelectedLLM] = useState(Object.values(LLM_MAPPINGS)[0].displayName)
   const [selectedLanguage, setSelectedLanguage] = useState("javascript")
   const [userAnswer, setUserAnswer] = useState("")
   const [userEssay, setUserEssay] = useState("")
@@ -318,10 +309,23 @@ export default function Home() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }])
 
     try {
-      // Use the display name from the mapping
-      const displayName = LLM_MAPPINGS[selectedLLM as keyof typeof LLM_MAPPINGS] || selectedLLM
-      const llmReply = await getLLMResponse(userMessage, displayName)
-      setMessages((prev) => [...prev, { role: "assistant", content: llmReply }])
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nickname: selectedLLM,
+          messages: [{ role: "user", content: userMessage }]
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from API');
+      }
+
+      const data = await response.json();
+      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (error) {
       console.error("Error getting LLM response:", error)
       toast({
@@ -566,10 +570,11 @@ export default function Home() {
                         <SelectValue placeholder="Select LLM" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Sarah">GPT-4 (Sarah)</SelectItem>
-                        <SelectItem value="Peter">GPT-3.5 Turbo (Peter)</SelectItem>
-                        <SelectItem value="James">Claude 3 Opus (James)</SelectItem>
-                        <SelectItem value="Emily">Gemini Pro (Emily)</SelectItem>
+                        {Object.entries(LLM_MAPPINGS).map(([id, config]) => (
+                          <SelectItem key={id} value={config.displayName}>
+                            {config.displayName} ({config.provider})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -632,10 +637,11 @@ export default function Home() {
                     <SelectValue placeholder="Select LLM" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Sarah">GPT-4 (Sarah)</SelectItem>
-                    <SelectItem value="Peter">GPT-3.5 Turbo (Peter)</SelectItem>
-                    <SelectItem value="James">Claude 3 Opus (James)</SelectItem>
-                    <SelectItem value="Emily">Gemini Pro (Emily)</SelectItem>
+                    {Object.entries(LLM_MAPPINGS).map(([id, config]) => (
+                      <SelectItem key={id} value={config.displayName}>
+                        {config.displayName} ({config.provider})
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -36,6 +36,7 @@ import { ExperimentResultsDialog } from "@/components/experiment-results-dialog"
 import { FileSpreadsheet } from "lucide-react"
 import { FileUploadParser } from "@/components/file-upload-parser"
 import { ImageIcon } from "lucide-react"
+import { AVAILABLE_LLMS, LLM_MAPPINGS } from '@/lib/config';
 
 // Define types for our question pools
 type Difficulty = "easy" | "medium" | "hard"
@@ -55,6 +56,8 @@ interface LLMMapping {
   id: string
   realName: string
   displayName: string
+  provider: string
+  description: string
 }
 
 // Define a type for created experiments
@@ -71,30 +74,21 @@ interface Experiment {
   createdAt: Date
 }
 
-// Available LLM models
-const availableLLMs = [
-  { value: "gpt-4", label: "GPT-4" },
-  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
-  { value: "claude-3-opus", label: "Claude 3 Opus" },
-  { value: "claude-3-sonnet", label: "Claude 3 Sonnet" },
-  { value: "llama-3-70b", label: "Llama 3 (70B)" },
-  { value: "mistral-large", label: "Mistral Large" },
-  { value: "gemini-pro", label: "Gemini Pro" },
-]
-
 export default function ResearcherPage() {
   const [activeTab, setActiveTab] = useState<string>("questions")
   const [questions, setQuestions] = useState<Question[]>([])
   const [newQuestion, setNewQuestion] = useState<string>("")
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>("medium")
   const [selectedSection, setSelectedSection] = useState<Section>("reading")
-  const [llmMappings, setLlmMappings] = useState<LLMMapping[]>([
-    { id: "1", realName: "gpt-4", displayName: "Sarah" },
-    { id: "2", realName: "gpt-3.5-turbo", displayName: "Peter" },
-    { id: "3", realName: "claude-3-opus", displayName: "James" },
-    { id: "4", realName: "llama-3-70b", displayName: "Emily" },
-    { id: "5", realName: "mistral-large", displayName: "Michael" },
-  ])
+  const [llmMappings, setLlmMappings] = useState<LLMMapping[]>(
+    Object.entries(LLM_MAPPINGS).map(([id, config]) => ({
+      id,
+      realName: config.model,
+      displayName: config.displayName,
+      provider: config.provider,
+      description: config.description,
+    }))
+  )
   const [selectedLLM, setSelectedLLM] = useState<string>("gpt-4")
   const [newLLMDisplayName, setNewLLMDisplayName] = useState<string>("")
   const [selectedExperimentLLM, setSelectedExperimentLLM] = useState<string>("")
@@ -390,6 +384,8 @@ export default function ResearcherPage() {
         id: Date.now().toString(),
         realName: selectedLLM,
         displayName: newLLMDisplayName,
+        provider: "",
+        description: "",
       }
       setLlmMappings([...llmMappings, newMapping])
       setNewLLMDisplayName("")
@@ -911,13 +907,13 @@ export default function ResearcherPage() {
                           LLM Model
                         </Label>
                         <Select value={selectedLLM} onValueChange={setSelectedLLM}>
-                          <SelectTrigger id="real-llm-name">
+                          <SelectTrigger>
                             <SelectValue placeholder="Select LLM" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableLLMs.map((llm) => (
+                            {AVAILABLE_LLMS.map((llm) => (
                               <SelectItem key={llm.value} value={llm.value}>
-                                {llm.label}
+                                {llm.label} ({llm.provider})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -989,9 +985,9 @@ export default function ResearcherPage() {
                                       <SelectValue placeholder="Select LLM model" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {availableLLMs.map((llm) => (
+                                      {AVAILABLE_LLMS.map((llm) => (
                                         <SelectItem key={llm.value} value={llm.value}>
-                                          {llm.label}
+                                          {llm.label} ({llm.provider})
                                         </SelectItem>
                                       ))}
                                     </SelectContent>

@@ -1,87 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getApiUrl } from '@/lib/config'
+
+// Define the backend URL
+// const BACKEND_URL = "http://localhost:3000";
 
 // Central nickname → provider, model, env key mapping
-const llmMap = {
-  Sarah: { provider: 'openai', model: 'gpt-4o', keyEnv: 'OPENAI_API_KEY' },
-  Peter: { provider: 'openai', model: 'gpt-3.5-turbo', keyEnv: 'OPENAI_API_KEY' },
-  James: { provider: 'meta', model: 'meta-llama/Llama-3-70b-chat-hf', keyEnv: 'HF_API_KEY' },
-  Emily: { provider: 'google', model: 'gemini-1.5-pro', keyEnv: 'GEMINI_API_KEY' },
-}
+// This mapping might still be useful for other purposes or could be removed if the backend handles all mapping
+// const llmMap = {
+//   Sarah: { provider: 'openai', model: 'gpt-4o', keyEnv: 'OPENAI_API_KEY' },
+//   Peter: { provider: 'openai', model: 'gpt-3.5-turbo', keyEnv: 'OPENAI_API_KEY' },
+//   James: { provider: 'meta', model: 'meta-llama/Llama-3-70b-chat-hf', keyEnv: 'HF_API_KEY' },
+//   Emily: { provider: 'google', model: 'gemini-1.5-pro', keyEnv: 'GEMINI_API_KEY' },
+// }
 
 export async function POST(req: NextRequest) {
-  const { nickname, message } = await req.json()
-
-  const llmInfo = llmMap[nickname]
-
-  if (!llmInfo) {
-    return NextResponse.json({ reply: `Unknown LLM nickname: ${nickname}` })
-  }
-
-  const apiKey = process.env[llmInfo.keyEnv as keyof typeof process.env]
-
-  if (!apiKey) {
-    return NextResponse.json({ reply: `API Key not configured for nickname: ${nickname}` })
-  }
-
   try {
-    let reply = 'Default fallback reply.'
+    const { nickname, messages } = await req.json();
 
-    if (llmInfo.provider === 'openai') {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: llmInfo.model,
-          messages: [{ role: 'user', content: message }],
-          temperature: 0.7,
-        }),
-      })
+    // Call the local backend API using the configured URL
+    const backendResponse = await fetch(getApiUrl('/api/chat'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ nickname, messages }),
+    });
 
-      const data = await response.json()
-      console.log('OpenAI response:', data)
-      reply = data.choices?.[0]?.message?.content || JSON.stringify(data)
+    if (!backendResponse.ok) {
+      // Handle backend errors
+      const errorData = await backendResponse.json();
+      console.error('Backend API error:', backendResponse.status, errorData);
+      return NextResponse.json({ error: errorData.detail || 'Backend error' }, { status: backendResponse.status });
     }
 
-    if (llmInfo.provider === 'meta') {
-      const response = await fetch(`https://api-inference.huggingface.co/models/${llmInfo.model}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ inputs: message }),
-      })
+    const data = await backendResponse.json();
+    console.log('Backend response:', data);
 
-      const data = await response.json()
-      console.log('Meta LLaMA response:', data)
-      reply = data?.[0]?.generated_text || JSON.stringify(data)
-    }
-
-    if (llmInfo.provider === 'google') {
-      // Example Gemini (replace with actual Google Gemini endpoint and format)
-      const response = await fetch('https://api.google.ai/gemini/v1/chat', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: llmInfo.model,
-          messages: [{ role: 'user', content: message }],
-        }),
-      })
-
-      const data = await response.json()
-      console.log('Gemini Pro response:', data)
-      reply = data.candidates?.[0]?.content || JSON.stringify(data)
-    }
-
-    return NextResponse.json({ reply })
+    return NextResponse.json({ response: data.response });
   } catch (error) {
-    console.error('API call error:', error)
-    return NextResponse.json({ reply: 'LLM API call failed.' })
+    console.error('Frontend API route error:', error);
+    return NextResponse.json({ error: 'Failed to communicate with backend LLM service.' }, { status: 500 });
   }
 }

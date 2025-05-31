@@ -1,8 +1,18 @@
+import { getApiUrl } from './config';
+
 export async function getLLMResponse(userInput: string, nickname: string): Promise<string> {
-    const res = await fetch('http://localhost:8000/api/chat', {
+    const res = await fetch(getApiUrl('/api/chat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname, message: userInput }),
+      body: JSON.stringify({
+        nickname,
+        messages: [
+          {
+            role: "user",
+            content: userInput
+          }
+        ]
+      }),
     })
   
     if (!res.ok) {
@@ -10,6 +20,6 @@ export async function getLLMResponse(userInput: string, nickname: string): Promi
       throw new Error(error.detail || 'Failed to get response from backend')
     }
     const data = await res.json()
-    return data.reply
+    return data.response
   }
   
