@@ -68,12 +68,12 @@ interface CodingChallenge {
 
 // Add LLM mapping constant
 const LLM_MAPPINGS = {
-  "gpt-4": "Sarah",
-  "gpt-3.5-turbo": "Peter",
-  "claude-3-opus": "James",
-  "llama-3-70b": "Emily",
-  "mistral-large": "Michael",
-  "gemini-pro": "Emily"
+  "gpt-4": "Alex",
+  "gpt-3.5-turbo": "Emily",
+  "claude-3-opus": "Sally",
+  "llama-3-70b": "Peter",
+  "mistral-large": "Sarah",
+  "gemma": "James"
 } as const
 
 export default function Home() {
@@ -319,20 +319,41 @@ export default function Home() {
 
     try {
       // Use the display name from the mapping
-      const displayName = LLM_MAPPINGS[selectedLLM as keyof typeof LLM_MAPPINGS] || selectedLLM
-      const llmReply = await getLLMResponse(userMessage, displayName)
-      setMessages((prev) => [...prev, { role: "assistant", content: llmReply }])
+      const displayName = LLM_MAPPINGS[selectedLLM as keyof typeof LLM_MAPPINGS] || selectedLLM;
+
+      const response = await fetch("http://127.0.0.1:5000/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: displayName,
+          prompt: userMessage
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(data);
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (error) {
-      console.error("Error getting LLM response:", error)
+      console.error("Error getting LLM response:", error);
       toast({
         title: "Error",
         description: "Failed to get response from LLM. Please try again.",
-        variant: "destructive",
-      })
+        variant: "destructive"
+      });
     } finally {
-      setIsSendingMessage(false)
+      setIsSendingMessage(false);
     }
-  }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -656,11 +677,10 @@ export default function Home() {
                 messages.map((message, index) => (
                   <div
                     key={index}
-                    className={`p-3 rounded-lg ${
-                      message.role === "user"
+                    className={`p-3 rounded-lg ${message.role === "user"
                         ? "bg-blue-100 dark:bg-blue-900/30 ml-4 md:ml-6"
                         : "bg-gray-100 dark:bg-gray-700 mr-4 md:mr-6"
-                    }`}
+                      }`}
                   >
                     <p className="text-sm font-semibold mb-1 dark:text-gray-200">
                       {message.role === "user" ? "You" : "Assistant"}

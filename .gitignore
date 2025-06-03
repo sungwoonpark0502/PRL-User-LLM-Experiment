@@ -19,6 +19,13 @@ yarn-error.log*
 # env files
 .env*
 
+#venv files 
+venv/
+
+#pycache files
+__pycache__/
+*.py[cod]
+
 # vercel
 .vercel
 
