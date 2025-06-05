@@ -6,7 +6,7 @@ name_to_model = {
     "Peter": ("llama3", "ollama"),
     "Sarah": ("mistral", "ollama"),
     "James": ("gemma", "ollama"),
-    "Alex": ("gpt-4o", "openai") 
+    "Alex": ("gpt-4", "openai") 
 }
 load_dotenv()
 
@@ -15,8 +15,6 @@ OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("Missing OPENAI_API_KEY")
-
-gpt_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 gpt_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -59,7 +57,9 @@ def chat(name, prompt):
                 top_p=1,
                 n=1,
             )
+            print(f"response: {completion.choices[0].message.content}")
             return {"response": completion.choices[0].message.content}
+        
         except Exception as e:
             return {"error": str(e)}
 
