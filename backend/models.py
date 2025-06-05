@@ -1,6 +1,6 @@
-import requests
 import os
-import sys
+from openai import OpenAI
+from dotenv import load_dotenv
 
 name_to_model = {
     "Peter": ("llama3", "ollama"),
@@ -8,12 +8,18 @@ name_to_model = {
     "James": ("gemma", "ollama"),
     "Alex": ("gpt-4o", "openai") 
 }
+load_dotenv()
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("Missing OPENAI_API_KEY")
 
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY") 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  
+gpt_client = OpenAI(api_key=OPENAI_API_KEY)
+
+
+gpt_client = OpenAI(api_key=OPENAI_API_KEY)
 
 def chat(name, prompt):
     model_info = name_to_model.get(name)
@@ -23,13 +29,11 @@ def chat(name, prompt):
     model_id, provider = model_info
 
     if provider == "ollama":
-        headers = {}
+        headers = {
+            "Content-Type": "application/json"
+        }
         if OLLAMA_API_KEY:
-            headers = {
-                "Authorization": f"{OLLAMA_API_KEY}", 
-                "Content-Type": "application/json"
-            }
-            
+            headers["Authorization"] = f"{OLLAMA_API_KEY}"
 
         payload = {
             "model": model_id,
@@ -38,6 +42,7 @@ def chat(name, prompt):
         }
 
         try:
+            import requests
             response = requests.post(OLLAMA_API_URL, json=payload, headers=headers)
             response.raise_for_status()
             return {"response": response.json().get("response", "")}
@@ -45,21 +50,16 @@ def chat(name, prompt):
             return {"error": str(e)}
 
     elif provider == "openai":
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": model_id,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-
         try:
-            response = requests.post(OPENAI_API_URL, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            return {"response": data["choices"][0]["message"]["content"]}
+            completion = gpt_client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=256,
+                top_p=1,
+                n=1,
+            )
+            return {"response": completion.choices[0].message.content}
         except Exception as e:
             return {"error": str(e)}
 

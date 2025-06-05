@@ -321,7 +321,7 @@ export default function Home() {
       // Use the display name from the mapping
       const displayName = LLM_MAPPINGS[selectedLLM as keyof typeof LLM_MAPPINGS] || selectedLLM;
 
-      const response = await fetch("http://127.0.0.1:5000/api/chat", {
+      const response = await fetch("http://127.0.0.1:5055/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
