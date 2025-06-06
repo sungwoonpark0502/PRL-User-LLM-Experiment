@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 
-name_to_model = {
+name_to_model = { 
     "Peter": ("llama3", "ollama"),
     "Sarah": ("mistral", "ollama"),
     "James": ("gemma", "ollama"),

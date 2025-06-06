@@ -73,14 +73,12 @@ interface Experiment {
 
 // Available LLM models
 const availableLLMs = [
-  { value: "gpt-4", label: "GPT-4" },
-  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
-  { value: "claude-3-opus", label: "Claude 3 Opus" },
-  { value: "claude-3-sonnet", label: "Claude 3 Sonnet" },
-  { value: "llama-3-70b", label: "Llama 3 (70B)" },
-  { value: "mistral-large", label: "Mistral Large" },
-  { value: "gemini-pro", label: "Gemini Pro" },
-]
+  { value: "llama3", label: "LLaMA 3" },
+  { value: "mistral", label: "Mistral" },
+  { value: "gemma", label: "Gemma" },
+  { value: "gpt-4", label: "GPT-4" }
+];
+
 
 export default function ResearcherPage() {
   const [activeTab, setActiveTab] = useState<string>("questions")
@@ -89,12 +87,12 @@ export default function ResearcherPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>("medium")
   const [selectedSection, setSelectedSection] = useState<Section>("reading")
   const [llmMappings, setLlmMappings] = useState<LLMMapping[]>([
-    { id: "1", realName: "gpt-4", displayName: "Sarah" },
-    { id: "2", realName: "gpt-3.5-turbo", displayName: "Peter" },
-    { id: "3", realName: "claude-3-opus", displayName: "James" },
-    { id: "4", realName: "llama-3-70b", displayName: "Emily" },
-    { id: "5", realName: "mistral-large", displayName: "Michael" },
-  ])
+    { id: "1", realName: "llama3", displayName: "Peter" },
+    { id: "2", realName: "mistral", displayName: "Sarah" },
+    { id: "3", realName: "gemma", displayName: "James" },
+    { id: "4", realName: "gpt-4", displayName: "Alex" }
+  ]);
+
   const [selectedLLM, setSelectedLLM] = useState<string>("gpt-4")
   const [newLLMDisplayName, setNewLLMDisplayName] = useState<string>("")
   const [selectedExperimentLLM, setSelectedExperimentLLM] = useState<string>("")
