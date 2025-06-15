@@ -780,9 +780,9 @@ export default function Home() {
               {currentMessages.length === 0 ? (
                 <div className="text-center text-gray-500 dark:text-gray-400 my-6">
                   <MessageSquare className="mx-auto h-10 w-10 opacity-50 mb-2" />
-                  <p>No messages yet. Start a conversation!</p>
+                  <p>No messages yet.</p>
                   <p className="text-sm mt-2 max-w-xs mx-auto">
-                    Ask questions about the tasks or request assistance with the reading, writing, or math exercises.
+                    For reference only.
                   </p>
                 </div>
               ) : (
