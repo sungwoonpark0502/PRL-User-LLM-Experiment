@@ -5,20 +5,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { BookOpen, PenLine, Code, ArrowLeft, ArrowRight } from "lucide-react"
+import { BookOpen, PenLine, ArrowLeft, ArrowRight, Calculator } from "lucide-react"
 import { useRouter } from "next/navigation"
-import CodeEditor from "@/components/code-editor"
 
 // Define types for our mixed questions
-type QuestionType = "reading" | "writing" | "code"
+type QuestionType = "reading" | "writing" | "math"
 
 interface MixedQuestion {
   id: string
   type: QuestionType
   content: string
-  difficulty: "easy" | "medium" | "hard"
+  difficulty: "elementary" | "middle" | "high"
 }
 
 export default function MixedPage() {
@@ -35,31 +33,31 @@ export default function MixedPage() {
       id: "1",
       type: "reading",
       content: "Read the passage and identify the main theme of artificial intelligence development.",
-      difficulty: "medium",
+      difficulty: "middle",
     },
     {
       id: "2",
       type: "writing",
       content: "Write a short essay about the ethical implications of AI in healthcare.",
-      difficulty: "hard",
+      difficulty: "high",
     },
     {
       id: "3",
-      type: "code",
-      content: "Write a function that finds the maximum value in an array of integers.",
-      difficulty: "easy",
+      type: "math",
+      content: "Solve the equation: 2x + 5 = 15",
+      difficulty: "elementary",
     },
     {
       id: "4",
       type: "reading",
       content: "Analyze the given text and explain how machine learning differs from traditional programming.",
-      difficulty: "medium",
+      difficulty: "middle",
     },
     {
       id: "5",
-      type: "code",
-      content: "Implement a function that checks if a string is a palindrome.",
-      difficulty: "medium",
+      type: "math",
+      content: "Calculate the area of a circle with radius 7.",
+      difficulty: "middle",
     },
   ])
 
@@ -110,8 +108,8 @@ export default function MixedPage() {
         return <BookOpen className="h-5 w-5" />
       case "writing":
         return <PenLine className="h-5 w-5" />
-      case "code":
-        return <Code className="h-5 w-5" />
+      case "math":
+        return <Calculator className="h-5 w-5" />
       default:
         return null
     }
@@ -124,10 +122,23 @@ export default function MixedPage() {
         return "Reading Question"
       case "writing":
         return "Writing Task"
-      case "code":
-        return "Coding Challenge"
+      case "math":
+        return "Math Problem"
       default:
         return "Question"
+    }
+  }
+
+  const getDifficultyLabel = (difficulty: MixedQuestion["difficulty"]) => {
+    switch (difficulty) {
+      case "elementary":
+        return "Elementary"
+      case "middle":
+        return "Middle School"
+      case "high":
+        return "High School"
+      default:
+        return "Unknown"
     }
   }
 
@@ -152,7 +163,7 @@ export default function MixedPage() {
             <div>
               <CardTitle className="text-lg">{getQuestionTypeLabel(currentQuestion.type)}</CardTitle>
               <CardDescription>
-                Difficulty: <span className="capitalize">{currentQuestion.difficulty}</span>
+                Difficulty: <span className="capitalize">{getDifficultyLabel(currentQuestion.difficulty)}</span>
               </CardDescription>
             </div>
           </CardHeader>
@@ -193,27 +204,15 @@ export default function MixedPage() {
                 </div>
               )}
 
-              {currentQuestion.type === "code" && (
+              {currentQuestion.type === "math" && (
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
-                    <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                      <SelectTrigger className="w-[140px] md:w-[180px] text-xs md:text-sm">
-                        <SelectValue placeholder="Select Language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="javascript">JavaScript</SelectItem>
-                        <SelectItem value="python">Python</SelectItem>
-                        <SelectItem value="java">Java</SelectItem>
-                        <SelectItem value="cpp">C++</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <CodeEditor
-                    language={selectedLanguage}
+                  <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
+                  <Textarea
+                    placeholder="Enter your solution here..."
                     value={currentAnswer}
-                    onChange={handleAnswerChange}
-                    height={250}
+                    onChange={(e) => handleAnswerChange(e.target.value)}
+                    rows={6}
+                    className="text-sm dark:bg-gray-700 dark:text-gray-200 dark:placeholder:text-gray-400"
                   />
                 </div>
               )}

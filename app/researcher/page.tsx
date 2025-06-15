@@ -10,13 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
 import {
   BookOpen,
   PenLine,
-  Code,
+  Calculator,
   Upload,
   Plus,
   Trash2,
@@ -26,6 +25,7 @@ import {
   Check,
   X,
   FileText,
+  Save,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
@@ -38,8 +38,8 @@ import { FileUploadParser } from "@/components/file-upload-parser"
 import { ImageIcon } from "lucide-react"
 
 // Define types for our question pools
-type Difficulty = "easy" | "medium" | "hard"
-type Section = "reading" | "writing" | "coding" | "mixed"
+type Difficulty = "elementary" | "middle" | "high"
+type Section = "reading" | "writing" | "math" | "mixed"
 
 // First, let's update our Question type to include associated files
 interface Question {
@@ -55,19 +55,21 @@ interface LLMMapping {
   id: string
   realName: string
   displayName: string
+  prompt?: string // Add prompt field
+}
+
+// Add participant interface - simplified for setup
+interface ExperimentParticipant {
+  participantNumber: string
+  llmId: string
+  assignedQuestions: string[]
 }
 
 // Define a type for created experiments
 interface Experiment {
   id: string
   name: string
-  llmId: string
-  questionCounts: {
-    reading: number
-    writing: number
-    coding: number
-    mixed: number
-  }
+  participant: ExperimentParticipant // Changed to single participant
   createdAt: Date
 }
 
@@ -86,27 +88,33 @@ export default function ResearcherPage() {
   const [activeTab, setActiveTab] = useState<string>("questions")
   const [questions, setQuestions] = useState<Question[]>([])
   const [newQuestion, setNewQuestion] = useState<string>("")
-  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>("medium")
+  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>("middle")
   const [selectedSection, setSelectedSection] = useState<Section>("reading")
   const [llmMappings, setLlmMappings] = useState<LLMMapping[]>([
-    { id: "1", realName: "gpt-4", displayName: "Sarah" },
-    { id: "2", realName: "gpt-3.5-turbo", displayName: "Peter" },
-    { id: "3", realName: "claude-3-opus", displayName: "James" },
-    { id: "4", realName: "llama-3-70b", displayName: "Emily" },
-    { id: "5", realName: "mistral-large", displayName: "Michael" },
+    { id: "1", realName: "gpt-4", displayName: "Sarah", prompt: "You are a helpful assistant." },
+    { id: "2", realName: "gpt-3.5-turbo", displayName: "Peter", prompt: "You are a knowledgeable tutor." },
+    { id: "3", realName: "claude-3-opus", displayName: "James", prompt: "You are an expert educator." },
+    { id: "4", realName: "llama-3-70b", displayName: "Emily", prompt: "You are a patient teacher." },
+    { id: "5", realName: "mistral-large", displayName: "Michael", prompt: "You are a supportive mentor." },
   ])
   const [selectedLLM, setSelectedLLM] = useState<string>("gpt-4")
   const [newLLMDisplayName, setNewLLMDisplayName] = useState<string>("")
-  const [selectedExperimentLLM, setSelectedExperimentLLM] = useState<string>("")
+  const [newLLMPrompt, setNewLLMPrompt] = useState<string>("")
+  const [selectedParticipantLLM, setSelectedParticipantLLM] = useState<string>("")
   const [experimentName, setExperimentName] = useState<string>("")
+
+  // Setup page state for participant creation
+  const [selectedQuestions, setSelectedQuestions] = useState<string[]>([])
+  const [nextParticipantNumber, setNextParticipantNumber] = useState<number>(1)
 
   // State for created experiments
   const [experiments, setExperiments] = useState<Experiment[]>([])
 
   // State for editing experiments
   const [editingExperimentId, setEditingExperimentId] = useState<string | null>(null)
-  const [editingQuestionCounts, setEditingQuestionCounts] = useState<Record<string, number>>({})
-  const [editingExperimentLLMId, setEditingExperimentLLMId] = useState<string>("")
+  const [editingExperimentName, setEditingExperimentName] = useState<string>("")
+  const [editingExperimentQuestions, setEditingExperimentQuestions] = useState<string[]>([])
+  const [editingExperimentLLM, setEditingExperimentLLM] = useState<string>("")
 
   // State for viewing experiment results
   const [viewingExperimentId, setViewingExperimentId] = useState<string | null>(null)
@@ -116,14 +124,6 @@ export default function ResearcherPage() {
   const [filterSection, setFilterSection] = useState<string>("all-sections")
   const [filterDifficulty, setFilterDifficulty] = useState<string>("all-difficulties")
   const [searchQuery, setSearchQuery] = useState<string>("")
-
-  // Question counts with number inputs
-  const [questionCounts, setQuestionCounts] = useState({
-    reading: 5,
-    writing: 5,
-    coding: 5,
-    mixed: 5,
-  })
 
   const [uploadedMaterials, setUploadedMaterials] = useState<string[]>([])
   // Add a state to track pending uploads (files that haven't been associated with a question yet)
@@ -142,8 +142,12 @@ export default function ResearcherPage() {
   const [editingLLMMappingId, setEditingLLMMappingId] = useState<string | null>(null)
   const [editingLLMModel, setEditingLLMModel] = useState<string>("")
 
-  // Add a new state for editing the LLM display name
+  // Add a new state for editing the LLM display name and prompt
   const [editingLLMDisplayName, setEditingLLMDisplayName] = useState<string>("")
+  const [editingLLMPrompt, setEditingLLMPrompt] = useState<string>("")
+
+  // Add this state near the other state declarations
+  const [selectedResultsParticipant, setSelectedResultsParticipant] = useState<string>("")
 
   // Load sample questions on mount
   useEffect(() => {
@@ -152,43 +156,43 @@ export default function ResearcherPage() {
       {
         id: "1",
         question: "Read the passage and identify the main theme.", // Changed from 'content' to 'question'
-        difficulty: "easy",
+        difficulty: "elementary",
         section: "reading",
       },
       {
         id: "2",
         question: "Analyze the given text and explain how machine learning differs from traditional programming.", // Changed from 'content' to 'question'
-        difficulty: "medium",
+        difficulty: "middle",
         section: "reading",
       },
       {
         id: "3",
         question: "Write an essay about the impact of technology on society.",
-        difficulty: "medium",
+        difficulty: "middle",
         section: "writing",
       },
       {
         id: "4",
         question: "Write a short essay discussing the ethical implications of AI in healthcare.",
-        difficulty: "hard",
+        difficulty: "high",
         section: "writing",
       },
       {
         id: "5",
-        question: "Implement a function to find the factorial of a number.",
-        difficulty: "easy",
-        section: "coding",
+        question: "Solve for x: 2x + 5 = 15",
+        difficulty: "elementary",
+        section: "math",
       },
       {
         id: "6",
-        question: "Create a function that implements the merge sort algorithm.",
-        difficulty: "hard",
-        section: "coding",
+        question: "Find the area of a circle with radius 7 units.",
+        difficulty: "middle",
+        section: "math",
       },
       {
         id: "7",
-        question: "Read the passage and write code to solve the described problem.",
-        difficulty: "medium",
+        question: "Read the passage and solve the related math problem.",
+        difficulty: "middle",
         section: "mixed",
       },
     ]
@@ -199,30 +203,27 @@ export default function ResearcherPage() {
       {
         id: "exp1",
         name: "Reading Comprehension Study",
-        llmId: "1", // Sarah (GPT-4)
-        questionCounts: {
-          reading: 8,
-          writing: 2,
-          coding: 0,
-          mixed: 0,
-        },
+        participant: { participantNumber: "1", llmId: "1", assignedQuestions: ["1", "2"] },
         createdAt: new Date(2023, 10, 15),
       },
       {
         id: "exp2",
-        name: "Coding Skills Assessment",
-        llmId: "5", // Michael (Mistral)
-        questionCounts: {
-          reading: 0,
-          writing: 0,
-          coding: 10,
-          mixed: 5,
-        },
+        name: "Math Skills Assessment",
+        participant: { participantNumber: "2", llmId: "5", assignedQuestions: ["5", "6", "7"] },
         createdAt: new Date(2023, 11, 2),
       },
     ]
     setExperiments(sampleExperiments)
+
+    // Set the next participant number based on existing experiments
+    setNextParticipantNumber(3) // Since we have participants 1 and 2 in sample data
   }, [])
+
+  // Add this useEffect after the existing useEffect
+  useEffect(() => {
+    // This effect ensures that any changes in questions or LLMs are immediately
+    // reflected in the setup section by triggering a re-render
+  }, [questions, llmMappings])
 
   // Add a handler for importing questions
   const handleQuestionsImported = (importedQuestions: any[]) => {
@@ -356,14 +357,15 @@ export default function ResearcherPage() {
     })
   }
 
-  // Update the handleStartEditLLMMapping function to also set the display name
+  // Update the handleStartEditLLMMapping function to also set the display name and prompt
   const handleStartEditLLMMapping = (mapping: LLMMapping) => {
     setEditingLLMMappingId(mapping.id)
     setEditingLLMModel(mapping.realName)
     setEditingLLMDisplayName(mapping.displayName)
+    setEditingLLMPrompt(mapping.prompt || "")
   }
 
-  // Update the handleSaveEditLLMMapping function to save the updated display name
+  // Update the handleSaveEditLLMMapping function to save the updated display name and prompt
   const handleSaveEditLLMMapping = (id: string) => {
     setLlmMappings(
       llmMappings.map((mapping) =>
@@ -372,6 +374,7 @@ export default function ResearcherPage() {
               ...mapping,
               realName: editingLLMModel,
               displayName: editingLLMDisplayName,
+              prompt: editingLLMPrompt,
             }
           : mapping,
       ),
@@ -390,9 +393,11 @@ export default function ResearcherPage() {
         id: Date.now().toString(),
         realName: selectedLLM,
         displayName: newLLMDisplayName,
+        prompt: newLLMPrompt.trim() || "You are a helpful assistant.",
       }
       setLlmMappings([...llmMappings, newMapping])
       setNewLLMDisplayName("")
+      setNewLLMPrompt("")
       toast({
         title: "Mapping Added",
         description: "The new LLM mapping has been added.",
@@ -416,6 +421,20 @@ export default function ResearcherPage() {
     })
   }
 
+  // Participant management functions for setup
+  const handleToggleQuestionSelection = (questionId: string) => {
+    setSelectedQuestions((prev) =>
+      prev.includes(questionId) ? prev.filter((id) => id !== questionId) : [...prev, questionId],
+    )
+  }
+
+  // Toggle question selection when editing an experiment
+  const handleToggleEditQuestionSelection = (questionId: string) => {
+    setEditingExperimentQuestions((prev) =>
+      prev.includes(questionId) ? prev.filter((id) => id !== questionId) : [...prev, questionId],
+    )
+  }
+
   const handleGenerateExperiment = () => {
     if (!experimentName.trim()) {
       toast({
@@ -426,84 +445,92 @@ export default function ResearcherPage() {
       return
     }
 
-    if (!selectedExperimentLLM && llmMappings.length > 0) {
+    if (!selectedParticipantLLM) {
       toast({
         title: "Error",
-        description: "Please select an LLM for the experiment.",
+        description: "Please select an LLM for this participant.",
         variant: "destructive",
       })
       return
     }
 
-    // Create a new experiment
+    if (selectedQuestions.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one question for this participant.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Create a new experiment with auto-incremented participant number
     const newExperiment: Experiment = {
       id: `exp-${Date.now()}`,
       name: experimentName,
-      llmId: selectedExperimentLLM,
-      questionCounts: { ...questionCounts },
+      participant: {
+        participantNumber: nextParticipantNumber.toString(),
+        llmId: selectedParticipantLLM,
+        assignedQuestions: [...selectedQuestions],
+      },
       createdAt: new Date(),
     }
 
     // Add to experiments list
     setExperiments([...experiments, newExperiment])
 
-    // Find the selected LLM mapping
-    const selectedLLM = llmMappings.find((mapping) => mapping.id === selectedExperimentLLM)
+    // Increment participant number for next experiment
+    setNextParticipantNumber(nextParticipantNumber + 1)
 
     // Reset form
     setExperimentName("")
+    setSelectedParticipantLLM("")
+    setSelectedQuestions([])
 
     // Show success message
     toast({
       title: "Experiment Created",
-      description: selectedLLM
-        ? `Your experiment "${experimentName}" has been created with ${selectedLLM.displayName} (${selectedLLM.realName}).`
-        : `Your experiment "${experimentName}" has been created.`,
+      description: `Your experiment "${experimentName}" has been created with participant #${nextParticipantNumber}.`,
     })
-  }
-
-  // Handle question count change
-  const handleQuestionCountChange = (section: keyof typeof questionCounts, value: string) => {
-    const numValue = Number.parseInt(value, 10)
-    if (!isNaN(numValue) && numValue >= 0 && numValue <= 20) {
-      setQuestionCounts({
-        ...questionCounts,
-        [section]: numValue,
-      })
-    }
-  }
-
-  // Handle editing experiment question count
-  const handleEditQuestionCountChange = (section: string, value: string) => {
-    const numValue = Number.parseInt(value, 10)
-    if (!isNaN(numValue) && numValue >= 0 && numValue <= 20) {
-      setEditingQuestionCounts({
-        ...editingQuestionCounts,
-        [section]: numValue,
-      })
-    }
   }
 
   // Start editing an experiment
   const handleStartEditExperiment = (experiment: Experiment) => {
     setEditingExperimentId(experiment.id)
-    setEditingQuestionCounts(experiment.questionCounts)
-    setEditingExperimentLLMId(experiment.llmId)
+    setEditingExperimentName(experiment.name)
+    setEditingExperimentQuestions([...experiment.participant.assignedQuestions])
+    setEditingExperimentLLM(experiment.participant.llmId)
   }
 
   // Save edited experiment
   const handleSaveEditExperiment = (id: string) => {
+    if (!editingExperimentName.trim()) {
+      toast({
+        title: "Error",
+        description: "Experiment name cannot be empty.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (editingExperimentQuestions.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one question.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setExperiments(
       experiments.map((exp) =>
         exp.id === id
           ? {
               ...exp,
-              llmId: editingExperimentLLMId,
-              questionCounts: {
-                reading: editingQuestionCounts.reading || 0,
-                writing: editingQuestionCounts.writing || 0,
-                coding: editingQuestionCounts.coding || 0,
-                mixed: editingQuestionCounts.mixed || 0,
+              name: editingExperimentName,
+              participant: {
+                ...exp.participant,
+                llmId: editingExperimentLLM,
+                assignedQuestions: editingExperimentQuestions,
               },
             }
           : exp,
@@ -523,20 +550,50 @@ export default function ResearcherPage() {
     setEditingExperimentId(null)
   }
 
-  // Delete experiment
+  // Delete experiment and adjust participant numbers
   const handleDeleteExperiment = (id: string) => {
-    setExperiments(experiments.filter((exp) => exp.id !== id))
+    const experimentToDelete = experiments.find((exp) => exp.id === id)
+    if (!experimentToDelete) return
+
+    const deletedParticipantNumber = Number.parseInt(experimentToDelete.participant.participantNumber)
+
+    // Remove the experiment
+    const updatedExperiments = experiments.filter((exp) => exp.id !== id)
+
+    // Adjust participant numbers for experiments with higher numbers
+    const reorderedExperiments = updatedExperiments.map((exp) => {
+      const currentParticipantNumber = Number.parseInt(exp.participant.participantNumber)
+      if (currentParticipantNumber > deletedParticipantNumber) {
+        return {
+          ...exp,
+          participant: {
+            ...exp.participant,
+            participantNumber: (currentParticipantNumber - 1).toString(),
+          },
+        }
+      }
+      return exp
+    })
+
+    setExperiments(reorderedExperiments)
+
+    // Adjust the next participant number
+    setNextParticipantNumber(Math.max(1, nextParticipantNumber - 1))
 
     toast({
       title: "Experiment Deleted",
-      description: "The experiment has been deleted.",
+      description: "The experiment has been deleted and participant numbers have been adjusted.",
     })
   }
 
   // View experiment results
-  const handleViewResults = (id: string) => {
-    setViewingExperimentId(id)
-    setShowResultsDialog(true)
+  const handleViewResults = (experimentId: string) => {
+    const experiment = experiments.find((exp) => exp.id === experimentId)
+    if (experiment) {
+      setViewingExperimentId(experimentId)
+      setSelectedResultsParticipant(experiment.participant.participantNumber)
+      setShowResultsDialog(true)
+    }
   }
 
   // Reset filters
@@ -559,6 +616,20 @@ export default function ResearcherPage() {
   // Cancel editing LLM Mapping
   const handleCancelEditLLMMapping = () => {
     setEditingLLMMappingId(null)
+  }
+
+  // Get difficulty display label
+  const getDifficultyLabel = (difficulty: Difficulty) => {
+    switch (difficulty) {
+      case "elementary":
+        return "Elementary (K-5)"
+      case "middle":
+        return "Middle School (6-8)"
+      case "high":
+        return "High School (9-12)"
+      default:
+        return difficulty
+    }
   }
 
   // If not authenticated, show login dialog
@@ -589,7 +660,7 @@ export default function ResearcherPage() {
               <span className="inline md:hidden">Questions</span>
             </TabsTrigger>
             <TabsTrigger value="llm" className="flex items-center">
-              <Code className="h-4 w-4 mr-2" />
+              <Calculator className="h-4 w-4 mr-2" />
               <span>LLMs</span>
             </TabsTrigger>
             <TabsTrigger value="config" className="flex items-center">
@@ -645,24 +716,24 @@ export default function ResearcherPage() {
                             <SelectContent>
                               <SelectItem value="reading">Reading</SelectItem>
                               <SelectItem value="writing">Writing</SelectItem>
-                              <SelectItem value="coding">Coding</SelectItem>
+                              <SelectItem value="math">Math</SelectItem>
                               <SelectItem value="mixed">Mixed</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label htmlFor="difficulty">Difficulty</Label>
+                          <Label htmlFor="difficulty">Grade Level</Label>
                           <Select
                             value={selectedDifficulty}
                             onValueChange={(value) => setSelectedDifficulty(value as Difficulty)}
                           >
                             <SelectTrigger id="difficulty">
-                              <SelectValue placeholder="Select difficulty" />
+                              <SelectValue placeholder="Select grade level" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="easy">Easy</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="hard">Hard</SelectItem>
+                              <SelectItem value="elementary">Elementary (K-5)</SelectItem>
+                              <SelectItem value="middle">Middle School (6-8)</SelectItem>
+                              <SelectItem value="high">High School (9-12)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -771,19 +842,19 @@ export default function ResearcherPage() {
                           <SelectItem value="all-sections">All Sections</SelectItem>
                           <SelectItem value="reading">Reading</SelectItem>
                           <SelectItem value="writing">Writing</SelectItem>
-                          <SelectItem value="coding">Coding</SelectItem>
+                          <SelectItem value="math">Math</SelectItem>
                           <SelectItem value="mixed">Mixed</SelectItem>
                         </SelectContent>
                       </Select>
                       <Select value={filterDifficulty} onValueChange={setFilterDifficulty}>
                         <SelectTrigger>
-                          <SelectValue placeholder="All Difficulties" />
+                          <SelectValue placeholder="All Grade Levels" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all-difficulties">All Difficulties</SelectItem>
-                          <SelectItem value="easy">Easy</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="hard">Hard</SelectItem>
+                          <SelectItem value="all-difficulties">All Grade Levels</SelectItem>
+                          <SelectItem value="elementary">Elementary (K-5)</SelectItem>
+                          <SelectItem value="middle">Middle School (6-8)</SelectItem>
+                          <SelectItem value="high">High School (9-12)</SelectItem>
                         </SelectContent>
                       </Select>
                       <div className="col-span-2 relative">
@@ -836,15 +907,15 @@ export default function ResearcherPage() {
                                 <div className="flex items-center gap-2 mb-1">
                                   <Badge
                                     variant={
-                                      question.difficulty === "easy"
+                                      question.difficulty === "elementary"
                                         ? "outline"
-                                        : question.difficulty === "medium"
+                                        : question.difficulty === "middle"
                                           ? "secondary"
                                           : "destructive"
                                     }
                                     className="text-xs"
                                   >
-                                    {question.difficulty}
+                                    {getDifficultyLabel(question.difficulty)}
                                   </Badge>
                                   <Badge variant="outline" className="text-xs">
                                     {question.section}
@@ -899,39 +970,55 @@ export default function ResearcherPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle>LLM Mapping</CardTitle>
-                <CardDescription>Map LLM models to display names for participants.</CardDescription>
+                <CardDescription>Map LLM models to display names and set prompts for participants.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
                     <Label>Add New Mapping</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label htmlFor="real-llm-name" className="text-xs">
-                          LLM Model
-                        </Label>
-                        <Select value={selectedLLM} onValueChange={setSelectedLLM}>
-                          <SelectTrigger id="real-llm-name">
-                            <SelectValue placeholder="Select LLM" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableLLMs.map((llm) => (
-                              <SelectItem key={llm.value} value={llm.value}>
-                                {llm.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="real-llm-name" className="text-xs">
+                              LLM Model
+                            </Label>
+                            <Select value={selectedLLM} onValueChange={setSelectedLLM}>
+                              <SelectTrigger id="real-llm-name">
+                                <SelectValue placeholder="Select LLM" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableLLMs.map((llm) => (
+                                  <SelectItem key={llm.value} value={llm.value}>
+                                    {llm.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="display-name" className="text-xs">
+                              Display Name
+                            </Label>
+                            <Input
+                              id="display-name"
+                              placeholder="e.g., Sarah"
+                              value={newLLMDisplayName}
+                              onChange={(e) => setNewLLMDisplayName(e.target.value)}
+                            />
+                          </div>
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor="display-name" className="text-xs">
-                          Display Name
+                        <Label htmlFor="llm-prompt" className="text-xs">
+                          System Prompt
                         </Label>
-                        <Input
-                          id="display-name"
-                          placeholder="e.g., Sarah"
-                          value={newLLMDisplayName}
-                          onChange={(e) => setNewLLMDisplayName(e.target.value)}
+                        <Textarea
+                          id="llm-prompt"
+                          placeholder="You are a helpful assistant..."
+                          value={newLLMPrompt}
+                          onChange={(e) => setNewLLMPrompt(e.target.value)}
+                          rows={3}
                         />
                       </div>
                     </div>
@@ -947,15 +1034,15 @@ export default function ResearcherPage() {
                 </div>
 
                 <div className="border rounded-md">
-                  <ScrollArea className="h-[300px] p-4">
-                    <div className="space-y-2">
+                  <ScrollArea className="h-[400px] p-4">
+                    <div className="space-y-4">
                       {llmMappings.length === 0 ? (
                         <p className="text-center text-gray-500 dark:text-gray-400 py-8">
                           No LLM mappings added yet. Add your first mapping above.
                         </p>
                       ) : (
                         llmMappings.map((mapping) => (
-                          <div key={mapping.id} className="p-3 border rounded-md dark:border-gray-700">
+                          <div key={mapping.id} className="p-4 border rounded-md dark:border-gray-700">
                             {editingLLMMappingId === mapping.id ? (
                               // Editing mode
                               <div className="space-y-3">
@@ -980,67 +1067,89 @@ export default function ResearcherPage() {
                                     </Button>
                                   </div>
                                 </div>
-                                <div className="space-y-2">
-                                  <Label htmlFor={`edit-llm-model-${mapping.id}`} className="text-sm">
-                                    LLM Model
-                                  </Label>
-                                  <Select value={editingLLMModel} onValueChange={setEditingLLMModel}>
-                                    <SelectTrigger id={`edit-llm-model-${mapping.id}`}>
-                                      <SelectValue placeholder="Select LLM model" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {availableLLMs.map((llm) => (
-                                        <SelectItem key={llm.value} value={llm.value}>
-                                          {llm.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label htmlFor={`edit-display-name-${mapping.id}`} className="text-sm">
-                                    Display Name
-                                  </Label>
-                                  <Input
-                                    id={`edit-display-name-${mapping.id}`}
-                                    value={editingLLMDisplayName}
-                                    onChange={(e) => setEditingLLMDisplayName(e.target.value)}
-                                    placeholder="e.g., Sarah"
-                                  />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor={`edit-llm-model-${mapping.id}`} className="text-sm">
+                                      LLM Model
+                                    </Label>
+                                    <Select value={editingLLMModel} onValueChange={setEditingLLMModel}>
+                                      <SelectTrigger id={`edit-llm-model-${mapping.id}`}>
+                                        <SelectValue placeholder="Select LLM model" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {availableLLMs.map((llm) => (
+                                          <SelectItem key={llm.value} value={llm.value}>
+                                            {llm.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Label htmlFor={`edit-display-name-${mapping.id}`} className="text-sm">
+                                      Display Name
+                                    </Label>
+                                    <Input
+                                      id={`edit-display-name-${mapping.id}`}
+                                      value={editingLLMDisplayName}
+                                      onChange={(e) => setEditingLLMDisplayName(e.target.value)}
+                                      placeholder="e.g., Sarah"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor={`edit-prompt-${mapping.id}`} className="text-sm">
+                                      System Prompt
+                                    </Label>
+                                    <Textarea
+                                      id={`edit-prompt-${mapping.id}`}
+                                      value={editingLLMPrompt}
+                                      onChange={(e) => setEditingLLMPrompt(e.target.value)}
+                                      placeholder="You are a helpful assistant..."
+                                      rows={4}
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             ) : (
                               // View mode
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <div>
-                                    <p className="text-sm font-medium dark:text-gray-200">LLM:</p>
-                                    <p className="text-sm dark:text-gray-300">{mapping.realName}</p>
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                    <div>
+                                      <p className="text-sm font-medium dark:text-gray-200">LLM:</p>
+                                      <p className="text-sm dark:text-gray-300">{mapping.realName}</p>
+                                    </div>
+                                    <div className="text-gray-500 dark:text-gray-400">→</div>
+                                    <div>
+                                      <p className="text-sm font-medium dark:text-gray-200">Name:</p>
+                                      <p className="text-sm dark:text-gray-300">{mapping.displayName}</p>
+                                    </div>
                                   </div>
-                                  <div className="text-gray-500 dark:text-gray-400">→</div>
-                                  <div>
-                                    <p className="text-sm font-medium dark:text-gray-200">Name:</p>
-                                    <p className="text-sm dark:text-gray-300">{mapping.displayName}</p>
+                                  <div className="flex space-x-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleStartEditLLMMapping(mapping)}
+                                      className="h-8 w-8"
+                                    >
+                                      <Edit className="h-4 w-4 text-blue-500" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDeleteLLMMapping(mapping.id)}
+                                      className="h-8 w-8"
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
                                   </div>
                                 </div>
-                                <div className="flex space-x-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleStartEditLLMMapping(mapping)}
-                                    className="h-8 w-8"
-                                  >
-                                    <Edit className="h-4 w-4 text-blue-500" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteLLMMapping(mapping.id)}
-                                    className="h-8 w-8"
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
-                                </div>
+                                {mapping.prompt && (
+                                  <div>
+                                    <p className="text-sm font-medium dark:text-gray-200 mb-1">System Prompt:</p>
+                                    <div className="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded border">
+                                      {mapping.prompt}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1053,17 +1162,17 @@ export default function ResearcherPage() {
             </Card>
           </TabsContent>
 
-          {/* Configuration Tab - With Number Inputs */}
+          {/* Configuration Tab - Simplified Setup */}
           <TabsContent value="config" className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle>Experiment Setup</CardTitle>
-                <CardDescription>Configure the experiment settings and create your experiment.</CardDescription>
+                <CardDescription>Create experiments with auto-assigned participant numbers.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="experiment-name" className="text-sm">
                           Experiment Name
@@ -1075,13 +1184,27 @@ export default function ResearcherPage() {
                           onChange={(e) => setExperimentName(e.target.value)}
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium">Participant Setup</h3>
+                      <Badge variant="outline" className="text-xs">
+                        Participant #{nextParticipantNumber}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div className="space-y-2">
-                        <Label htmlFor="experiment-llm" className="text-sm">
-                          LLM Selection
+                        <Label htmlFor="participant-llm" className="text-sm">
+                          Assign LLM
                         </Label>
-                        <Select value={selectedExperimentLLM} onValueChange={setSelectedExperimentLLM}>
-                          <SelectTrigger id="experiment-llm">
-                            <SelectValue placeholder="Select LLM for experiment" />
+                        <Select value={selectedParticipantLLM} onValueChange={setSelectedParticipantLLM}>
+                          <SelectTrigger id="participant-llm">
+                            <SelectValue placeholder="Select LLM" />
                           </SelectTrigger>
                           <SelectContent>
                             {llmMappings.length === 0 ? (
@@ -1099,108 +1222,182 @@ export default function ResearcherPage() {
                         </Select>
                       </div>
                     </div>
-                  </div>
 
-                  <Separator />
+                    {/* Question Selection by Category */}
+                    <div className="space-y-4">
+                      <Label className="text-sm">Select Questions by Category</Label>
 
-                  <div>
-                    <h3 className="text-sm font-medium mb-3">Question Distribution</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {/* Reading Section */}
-                      <div className="space-y-2 border rounded-md p-3 dark:border-gray-700">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="reading-questions" className="text-sm font-medium">
-                            Reading
-                          </Label>
-                          <Switch id="reading-enabled" defaultChecked />
+                      {/* Reading Questions */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium">Reading Questions</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {
+                              selectedQuestions.filter(
+                                (id) => questions.find((q) => q.id === id)?.section === "reading",
+                              ).length
+                            }{" "}
+                            selected
+                          </Badge>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor="reading-questions" className="text-xs whitespace-nowrap">
-                            Questions:
-                          </Label>
-                          <Input
-                            id="reading-questions"
-                            type="number"
-                            min="0"
-                            max="20"
-                            value={questionCounts.reading}
-                            onChange={(e) => handleQuestionCountChange("reading", e.target.value)}
-                            className="h-8 w-16"
-                          />
+                        <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto">
+                          {questions
+                            .filter((q) => q.section === "reading")
+                            .map((question) => (
+                              <div
+                                key={question.id}
+                                className={`p-2 border rounded cursor-pointer transition-colors text-xs ${
+                                  selectedQuestions.includes(question.id)
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                                }`}
+                                onClick={() => handleToggleQuestionSelection(question.id)}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {getDifficultyLabel(question.difficulty)}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs">{question.question}</p>
+                              </div>
+                            ))}
+                          {questions.filter((q) => q.section === "reading").length === 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 py-2">
+                              No reading questions available
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Writing Section */}
-                      <div className="space-y-2 border rounded-md p-3 dark:border-gray-700">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="writing-questions" className="text-sm font-medium">
-                            Writing
-                          </Label>
-                          <Switch id="writing-enabled" defaultChecked />
+                      {/* Writing Questions */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium">Writing Questions</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {
+                              selectedQuestions.filter(
+                                (id) => questions.find((q) => q.id === id)?.section === "writing",
+                              ).length
+                            }{" "}
+                            selected
+                          </Badge>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor="writing-questions" className="text-xs whitespace-nowrap">
-                            Questions:
-                          </Label>
-                          <Input
-                            id="writing-questions"
-                            type="number"
-                            min="0"
-                            max="20"
-                            value={questionCounts.writing}
-                            onChange={(e) => handleQuestionCountChange("writing", e.target.value)}
-                            className="h-8 w-16"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Coding Section */}
-                      <div className="space-y-2 border rounded-md p-3 dark:border-gray-700">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="coding-questions" className="text-sm font-medium">
-                            Coding
-                          </Label>
-                          <Switch id="coding-enabled" defaultChecked />
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor="coding-questions" className="text-xs whitespace-nowrap">
-                            Questions:
-                          </Label>
-                          <Input
-                            id="coding-questions"
-                            type="number"
-                            min="0"
-                            max="20"
-                            value={questionCounts.coding}
-                            onChange={(e) => handleQuestionCountChange("coding", e.target.value)}
-                            className="h-8 w-16"
-                          />
+                        <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto">
+                          {questions
+                            .filter((q) => q.section === "writing")
+                            .map((question) => (
+                              <div
+                                key={question.id}
+                                className={`p-2 border rounded cursor-pointer transition-colors text-xs ${
+                                  selectedQuestions.includes(question.id)
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                                }`}
+                                onClick={() => handleToggleQuestionSelection(question.id)}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {getDifficultyLabel(question.difficulty)}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs">{question.question}</p>
+                              </div>
+                            ))}
+                          {questions.filter((q) => q.section === "writing").length === 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 py-2">
+                              No writing questions available
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Mixed Section */}
-                      <div className="space-y-2 border rounded-md p-3 dark:border-gray-700">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="mixed-questions" className="text-sm font-medium">
-                            Mixed
-                          </Label>
-                          <Switch id="mixed-enabled" defaultChecked />
+                      {/* Math Questions */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium">Math Questions</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {
+                              selectedQuestions.filter((id) => questions.find((q) => q.id === id)?.section === "math")
+                                .length
+                            }{" "}
+                            selected
+                          </Badge>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor="mixed-questions" className="text-xs whitespace-nowrap">
-                            Questions:
-                          </Label>
-                          <Input
-                            id="mixed-questions"
-                            type="number"
-                            min="0"
-                            max="20"
-                            value={questionCounts.mixed}
-                            onChange={(e) => handleQuestionCountChange("mixed", e.target.value)}
-                            className="h-8 w-16"
-                          />
+                        <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto">
+                          {questions
+                            .filter((q) => q.section === "math")
+                            .map((question) => (
+                              <div
+                                key={question.id}
+                                className={`p-2 border rounded cursor-pointer transition-colors text-xs ${
+                                  selectedQuestions.includes(question.id)
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                                }`}
+                                onClick={() => handleToggleQuestionSelection(question.id)}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {getDifficultyLabel(question.difficulty)}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs">{question.question}</p>
+                              </div>
+                            ))}
+                          {questions.filter((q) => q.section === "math").length === 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 py-2">No math questions available</p>
+                          )}
                         </div>
                       </div>
+
+                      {/* Mixed Questions */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium">Mixed Questions</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {
+                              selectedQuestions.filter((id) => questions.find((q) => q.id === id)?.section === "mixed")
+                                .length
+                            }{" "}
+                            selected
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto">
+                          {questions
+                            .filter((q) => q.section === "mixed")
+                            .map((question) => (
+                              <div
+                                key={question.id}
+                                className={`p-2 border rounded cursor-pointer transition-colors text-xs ${
+                                  selectedQuestions.includes(question.id)
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                                }`}
+                                onClick={() => handleToggleQuestionSelection(question.id)}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {getDifficultyLabel(question.difficulty)}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs">{question.question}</p>
+                              </div>
+                            ))}
+                          {questions.filter((q) => q.section === "mixed").length === 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 py-2">
+                              No mixed questions available
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedQuestions.length > 0 && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Total: {selectedQuestions.length} question(s) selected across all categories
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1209,7 +1406,7 @@ export default function ResearcherPage() {
                       size="default"
                       onClick={handleGenerateExperiment}
                       className="px-8"
-                      disabled={!experimentName.trim() || (!selectedExperimentLLM && llmMappings.length > 0)}
+                      disabled={!experimentName.trim() || !selectedParticipantLLM || selectedQuestions.length === 0}
                     >
                       Create Experiment
                     </Button>
@@ -1229,103 +1426,151 @@ export default function ResearcherPage() {
                                 // Editing mode
                                 <div className="space-y-4">
                                   <div className="flex justify-between items-center">
-                                    <h4 className="font-medium">{experiment.name}</h4>
+                                    <div className="space-y-2 flex-1 mr-4">
+                                      <Label htmlFor={`edit-name-${experiment.id}`} className="text-sm">
+                                        Experiment Name
+                                      </Label>
+                                      <Input
+                                        id={`edit-name-${experiment.id}`}
+                                        value={editingExperimentName}
+                                        onChange={(e) => setEditingExperimentName(e.target.value)}
+                                      />
+                                    </div>
                                     <div className="flex space-x-2">
                                       <Button
-                                        variant="ghost"
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => handleSaveEditExperiment(experiment.id)}
-                                        className="h-8 w-8 p-0"
+                                        className="h-8"
                                       >
-                                        <Check className="h-4 w-4 text-green-500" />
+                                        <Save className="h-4 w-4 mr-1" />
+                                        Save
                                       </Button>
                                       <Button
                                         variant="ghost"
                                         size="sm"
                                         onClick={handleCancelEditExperiment}
-                                        className="h-8 w-8 p-0"
+                                        className="h-8"
                                       >
-                                        <X className="h-4 w-4 text-red-500" />
+                                        <X className="h-4 w-4 mr-1" />
+                                        Cancel
                                       </Button>
                                     </div>
                                   </div>
 
-                                  <div className="space-y-3">
-                                    <div className="space-y-2">
-                                      <Label htmlFor={`edit-llm-${experiment.id}`} className="text-sm">
-                                        LLM Selection
-                                      </Label>
-                                      <Select value={editingExperimentLLMId} onValueChange={setEditingExperimentLLMId}>
-                                        <SelectTrigger id={`edit-llm-${experiment.id}`}>
-                                          <SelectValue placeholder="Select LLM for experiment" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {llmMappings.map((mapping) => (
-                                            <SelectItem key={mapping.id} value={mapping.id}>
-                                              {mapping.displayName} ({mapping.realName})
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor={`edit-llm-${experiment.id}`} className="text-sm">
+                                      LLM Selection
+                                    </Label>
+                                    <Select value={editingExperimentLLM} onValueChange={setEditingExperimentLLM}>
+                                      <SelectTrigger id={`edit-llm-${experiment.id}`}>
+                                        <SelectValue placeholder="Select LLM" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {llmMappings.map((mapping) => (
+                                          <SelectItem key={mapping.id} value={mapping.id}>
+                                            {mapping.displayName} ({mapping.realName})
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                      <div className="space-y-1">
-                                        <Label htmlFor={`edit-reading-${experiment.id}`} className="text-xs">
-                                          Reading Questions
-                                        </Label>
-                                        <Input
-                                          id={`edit-reading-${experiment.id}`}
-                                          type="number"
-                                          min="0"
-                                          max="20"
-                                          value={editingQuestionCounts.reading}
-                                          onChange={(e) => handleEditQuestionCountChange("reading", e.target.value)}
-                                          className="h-8"
-                                        />
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Edit Questions</Label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                      {/* Reading Questions */}
+                                      <div className="border rounded-md p-3">
+                                        <h5 className="text-xs font-medium mb-2">Reading Questions</h5>
+                                        <div className="max-h-[100px] overflow-y-auto space-y-1">
+                                          {questions
+                                            .filter((q) => q.section === "reading")
+                                            .map((question) => (
+                                              <div
+                                                key={question.id}
+                                                className={`p-1 border rounded cursor-pointer text-xs ${
+                                                  editingExperimentQuestions.includes(question.id)
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                                    : "border-gray-200 dark:border-gray-700"
+                                                }`}
+                                                onClick={() => handleToggleEditQuestionSelection(question.id)}
+                                              >
+                                                <p className="text-xs truncate">{question.question}</p>
+                                              </div>
+                                            ))}
+                                        </div>
                                       </div>
-                                      <div className="space-y-1">
-                                        <Label htmlFor={`edit-writing-${experiment.id}`} className="text-xs">
-                                          Writing Questions
-                                        </Label>
-                                        <Input
-                                          id={`edit-writing-${experiment.id}`}
-                                          type="number"
-                                          min="0"
-                                          max="20"
-                                          value={editingQuestionCounts.writing}
-                                          onChange={(e) => handleEditQuestionCountChange("writing", e.target.value)}
-                                          className="h-8"
-                                        />
+
+                                      {/* Writing Questions */}
+                                      <div className="border rounded-md p-3">
+                                        <h5 className="text-xs font-medium mb-2">Writing Questions</h5>
+                                        <div className="max-h-[100px] overflow-y-auto space-y-1">
+                                          {questions
+                                            .filter((q) => q.section === "writing")
+                                            .map((question) => (
+                                              <div
+                                                key={question.id}
+                                                className={`p-1 border rounded cursor-pointer text-xs ${
+                                                  editingExperimentQuestions.includes(question.id)
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                                    : "border-gray-200 dark:border-gray-700"
+                                                }`}
+                                                onClick={() => handleToggleEditQuestionSelection(question.id)}
+                                              >
+                                                <p className="text-xs truncate">{question.question}</p>
+                                              </div>
+                                            ))}
+                                        </div>
                                       </div>
-                                      <div className="space-y-1">
-                                        <Label htmlFor={`edit-coding-${experiment.id}`} className="text-xs">
-                                          Coding Questions
-                                        </Label>
-                                        <Input
-                                          id={`edit-coding-${experiment.id}`}
-                                          type="number"
-                                          min="0"
-                                          max="20"
-                                          value={editingQuestionCounts.coding}
-                                          onChange={(e) => handleEditQuestionCountChange("coding", e.target.value)}
-                                          className="h-8"
-                                        />
+
+                                      {/* Math Questions */}
+                                      <div className="border rounded-md p-3">
+                                        <h5 className="text-xs font-medium mb-2">Math Questions</h5>
+                                        <div className="max-h-[100px] overflow-y-auto space-y-1">
+                                          {questions
+                                            .filter((q) => q.section === "math")
+                                            .map((question) => (
+                                              <div
+                                                key={question.id}
+                                                className={`p-1 border rounded cursor-pointer text-xs ${
+                                                  editingExperimentQuestions.includes(question.id)
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                                    : "border-gray-200 dark:border-gray-700"
+                                                }`}
+                                                onClick={() => handleToggleEditQuestionSelection(question.id)}
+                                              >
+                                                <p className="text-xs truncate">{question.question}</p>
+                                              </div>
+                                            ))}
+                                        </div>
                                       </div>
-                                      <div className="space-y-1">
-                                        <Label htmlFor={`edit-mixed-${experiment.id}`} className="text-xs">
-                                          Mixed Questions
-                                        </Label>
-                                        <Input
-                                          id={`edit-mixed-${experiment.id}`}
-                                          type="number"
-                                          min="0"
-                                          max="20"
-                                          value={editingQuestionCounts.mixed}
-                                          onChange={(e) => handleEditQuestionCountChange("mixed", e.target.value)}
-                                          className="h-8"
-                                        />
+
+                                      {/* Mixed Questions */}
+                                      <div className="border rounded-md p-3">
+                                        <h5 className="text-xs font-medium mb-2">Mixed Questions</h5>
+                                        <div className="max-h-[100px] overflow-y-auto space-y-1">
+                                          {questions
+                                            .filter((q) => q.section === "mixed")
+                                            .map((question) => (
+                                              <div
+                                                key={question.id}
+                                                className={`p-1 border rounded cursor-pointer text-xs ${
+                                                  editingExperimentQuestions.includes(question.id)
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                                    : "border-gray-200 dark:border-gray-700"
+                                                }`}
+                                                onClick={() => handleToggleEditQuestionSelection(question.id)}
+                                              >
+                                                <p className="text-xs truncate">{question.question}</p>
+                                              </div>
+                                            ))}
+                                        </div>
                                       </div>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        Total: {editingExperimentQuestions.length} question(s) selected
+                                      </p>
                                     </div>
                                   </div>
                                 </div>
@@ -1355,37 +1600,21 @@ export default function ResearcherPage() {
                                   </div>
 
                                   <div className="flex flex-wrap gap-2">
-                                    {/* LLM Badge */}
-                                    {(() => {
-                                      const llm = llmMappings.find((m) => m.id === experiment.llmId)
-                                      return llm ? (
-                                        <Badge variant="secondary" className="text-xs">
-                                          LLM: {llm.displayName} ({llm.realName})
-                                        </Badge>
-                                      ) : null
-                                    })()}
+                                    {/* Participant Badge */}
+                                    <Badge variant="outline" className="text-xs">
+                                      Participant #{experiment.participant.participantNumber}
+                                    </Badge>
 
-                                    {/* Question count badges */}
-                                    {experiment.questionCounts.reading > 0 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Reading: {experiment.questionCounts.reading}
-                                      </Badge>
-                                    )}
-                                    {experiment.questionCounts.writing > 0 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Writing: {experiment.questionCounts.writing}
-                                      </Badge>
-                                    )}
-                                    {experiment.questionCounts.coding > 0 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Coding: {experiment.questionCounts.coding}
-                                      </Badge>
-                                    )}
-                                    {experiment.questionCounts.mixed > 0 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Mixed: {experiment.questionCounts.mixed}
-                                      </Badge>
-                                    )}
+                                    {/* LLM Badge */}
+                                    <Badge variant="outline" className="text-xs">
+                                      {llmMappings.find((m) => m.id === experiment.participant.llmId)?.displayName ||
+                                        "Unknown LLM"}
+                                    </Badge>
+
+                                    {/* Questions Badge */}
+                                    <Badge variant="outline" className="text-xs">
+                                      {experiment.participant.assignedQuestions.length} questions
+                                    </Badge>
 
                                     {/* Date badge */}
                                     <Badge variant="outline" className="text-xs">
@@ -1424,6 +1653,7 @@ export default function ResearcherPage() {
         open={showResultsDialog}
         onOpenChange={setShowResultsDialog}
         experimentId={viewingExperimentId}
+        selectedParticipant={selectedResultsParticipant}
         llmMappings={llmMappings}
       />
       {showFileUploadParser && (

@@ -10,16 +10,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { MessageSquare, BookOpen, PenLine, Code, Send, Menu, User, Shuffle } from "lucide-react"
+import { MessageSquare, BookOpen, PenLine, Calculator, Send, Menu, User, Shuffle } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SettingsDialog } from "@/components/settings-dialog"
-import CodeEditor from "@/components/code-editor"
 import { useRouter } from "next/navigation"
-import { getLLMResponse } from "@/lib/openai"
 
 type MessageRole = "user" | "assistant"
 
@@ -29,13 +27,13 @@ interface Message {
 }
 
 // Define types for mixed questions
-type QuestionType = "reading" | "writing" | "coding"
+type QuestionType = "reading" | "writing" | "math"
 
 interface MixedQuestion {
   id: string
   type: QuestionType
   content: string
-  difficulty: "easy" | "medium" | "hard"
+  difficulty: "elementary" | "middle" | "high"
 }
 
 // Define types for section questions
@@ -59,25 +57,54 @@ interface WritingPrompt {
   wordCountMax: number
 }
 
-interface CodingChallenge {
+interface MathChallenge {
   id: string
   problem: string
   example: string
-  defaultCode: string
+  defaultAnswer: string
 }
 
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [selectedParticipant, setSelectedParticipant] = useState<string>("")
+
+  // Mock experiments data - in a real app, this would come from the researcher's created experiments
+  const [experiments, setExperiments] = useState([
+    {
+      id: "exp1",
+      name: "Reading Comprehension Study",
+      participants: [{ participantNumber: "1", llmId: "1", llmDisplayName: "Sarah", assignedQuestions: ["1", "2"] }],
+    },
+    {
+      id: "exp2",
+      name: "Math Skills Assessment",
+      participants: [{ participantNumber: "2", llmId: "5", llmDisplayName: "Michael", assignedQuestions: ["5", "7"] }],
+    },
+    {
+      id: "exp3",
+      name: "Writing Analysis",
+      participants: [{ participantNumber: "3", llmId: "3", llmDisplayName: "James", assignedQuestions: ["2", "4"] }],
+    },
+  ])
+
+  // Get all available participants from all experiments - simplified to just participant numbers
+  const allParticipants = experiments.map((exp) => ({
+    ...exp.participants[0], // Since each experiment has only one participant now
+    experimentName: exp.name,
+    experimentId: exp.id,
+  }))
+
+  // Get available LLMs for the selected participant
+  const selectedParticipantData = allParticipants.find((p) => p.participantNumber === selectedParticipant)
+
   const [inputValue, setInputValue] = useState("")
   const [selectedLLM, setSelectedLLM] = useState("gpt-4")
-  const [selectedLanguage, setSelectedLanguage] = useState("javascript")
   const [userAnswer, setUserAnswer] = useState("")
   const [userEssay, setUserEssay] = useState("")
-  const [userCode, setUserCode] = useState("// Write your code here\n\n")
+  const [userMathAnswer, setUserMathAnswer] = useState("")
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isSubmittingAnswers, setIsSubmittingAnswers] = useState(false)
   const [isSubmittingEssay, setIsSubmittingEssay] = useState(false)
-  const [isRunningCode, setIsRunningCode] = useState(false)
+  const [isSubmittingMath, setIsSubmittingMath] = useState(false)
   const [activeTab, setActiveTab] = useState("reading")
   const { toast } = useToast()
   const isMobile = useMobile()
@@ -87,12 +114,35 @@ export default function Home() {
   // Current question indices for each section
   const [currentReadingIndex, setCurrentReadingIndex] = useState(0)
   const [currentWritingIndex, setCurrentWritingIndex] = useState(0)
-  const [currentCodingIndex, setCurrentCodingIndex] = useState(0)
+  const [currentMathIndex, setCurrentMathIndex] = useState(0)
 
   // Mixed section state
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({})
   const [isSubmittingMixed, setIsSubmittingMixed] = useState(false)
+
+  // Chat history for each question in each section
+  const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>({})
+
+  // Get current chat key based on active tab and question index
+  const getCurrentChatKey = () => {
+    switch (activeTab) {
+      case "reading":
+        return `reading-${currentReadingIndex}`
+      case "writing":
+        return `writing-${currentWritingIndex}`
+      case "math":
+        return `math-${currentMathIndex}`
+      case "mixed":
+        return `mixed-${currentQuestionIndex}`
+      default:
+        return "general"
+    }
+  }
+
+  // Get current messages for the active question
+  const currentChatKey = getCurrentChatKey()
+  const currentMessages = chatHistories[currentChatKey] || []
 
   // Sample reading questions
   const [readingQuestions, setReadingQuestions] = useState<ReadingQuestion[]>([
@@ -221,40 +271,37 @@ export default function Home() {
     },
   ])
 
-  // Sample coding challenges
-  const [codingChallenges, setCodingChallenges] = useState<CodingChallenge[]>([
+  // Sample math challenges
+  const [mathChallenges, setMathChallenges] = useState<MathChallenge[]>([
     {
-      id: "c1",
-      problem:
-        "Write a function that takes an array of integers and returns the two numbers that add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice.",
-      example: "Input: nums = [2, 7, 11, 15], target = 9\nOutput: [0, 1] (because nums[0] + nums[1] = 2 + 7 = 9)",
-      defaultCode: "// Write your code here\n\n",
+      id: "m1",
+      problem: "Solve for x in the equation: 2x + 5 = 15. Show your work step by step.",
+      example: "Example: If 3x + 2 = 11, then 3x = 9, so x = 3",
+      defaultAnswer: "Show your work here...\n\n",
     },
     {
-      id: "c2",
-      problem:
-        "Implement a function to check if a string is a palindrome (reads the same backward as forward), considering only alphanumeric characters and ignoring case.",
-      example: "Input: 'A man, a plan, a canal: Panama'\nOutput: true",
-      defaultCode: "// Write your code here\n\n",
+      id: "m2",
+      problem: "Find the area of a circle with radius 7 units. Use π ≈ 3.14159.",
+      example: "Formula: A = πr²\nExample: For radius 3, A = π × 3² = 9π ≈ 28.27 square units",
+      defaultAnswer: "Show your calculation here...\n\n",
     },
     {
-      id: "c3",
-      problem:
-        "Write a function to find the longest common prefix string amongst an array of strings. If there is no common prefix, return an empty string.",
-      example: "Input: ['flower', 'flow', 'flight']\nOutput: 'fl'",
-      defaultCode: "// Write your code here\n\n",
+      id: "m3",
+      problem: "Solve the quadratic equation: x² - 5x + 6 = 0. Find both solutions.",
+      example: "You can use factoring, completing the square, or the quadratic formula",
+      defaultAnswer: "Show your solution method here...\n\n",
     },
     {
-      id: "c4",
-      problem: "Implement a function that merges two sorted arrays into a single sorted array.",
-      example: "Input: [1, 3, 5], [2, 4, 6]\nOutput: [1, 2, 3, 4, 5, 6]",
-      defaultCode: "// Write your code here\n\n",
+      id: "m4",
+      problem: "Calculate the slope of the line passing through points (2, 3) and (6, 11).",
+      example: "Formula: slope = (y₂ - y₁) / (x₂ - x₁)",
+      defaultAnswer: "Show your calculation here...\n\n",
     },
     {
-      id: "c5",
-      problem: "Write a function that converts a given integer to its Roman numeral representation.",
-      example: "Input: 58\nOutput: 'LVIII' (L = 50, V = 5, III = 3)",
-      defaultCode: "// Write your code here\n\n",
+      id: "m5",
+      problem: "Find the value of log₂(32). Explain your reasoning.",
+      example: "Think about what power of 2 gives you 32",
+      defaultAnswer: "Show your reasoning here...\n\n",
     },
   ])
 
@@ -264,31 +311,31 @@ export default function Home() {
       id: "1",
       type: "reading",
       content: "Read the passage and identify the main theme of artificial intelligence development.",
-      difficulty: "medium",
+      difficulty: "middle",
     },
     {
       id: "2",
       type: "writing",
       content: "Write a short essay about the ethical implications of AI in healthcare.",
-      difficulty: "hard",
+      difficulty: "high",
     },
     {
       id: "3",
-      type: "coding",
-      content: "Write a function that finds the maximum value in an array of integers.",
-      difficulty: "easy",
+      type: "math",
+      content: "Solve for x: 3x + 7 = 22",
+      difficulty: "elementary",
     },
     {
       id: "4",
       type: "reading",
       content: "Analyze the given text and explain how machine learning differs from traditional programming.",
-      difficulty: "medium",
+      difficulty: "middle",
     },
     {
       id: "5",
-      type: "coding",
-      content: "Implement a function that checks if a string is a palindrome.",
-      difficulty: "medium",
+      type: "math",
+      content: "Find the area of a triangle with base 8 units and height 6 units.",
+      difficulty: "middle",
     },
   ])
 
@@ -297,34 +344,32 @@ export default function Home() {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
     }
-  }, [messages])
+  }, [currentMessages])
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (inputValue.trim()) {
       setIsSendingMessage(true)
-  
-      try {
+
+      // Simulate API call delay
+      setTimeout(() => {
         const newMessages: Message[] = [
-          ...messages,
+          ...currentMessages,
           { role: "user" as MessageRole, content: inputValue },
+          {
+            role: "assistant" as MessageRole,
+            content: `This is a simulated response from ${selectedLLM}. In a real implementation, this would be connected to the actual LLM API.`,
+          },
         ]
-        setMessages(newMessages)
-  
-        const llmReply = await getLLMResponse(inputValue, selectedLLM) // 👈 pass selectedLLM nickname
-  
-        setMessages([
-          ...newMessages,
-          { role: "assistant" as MessageRole, content: llmReply },
-        ])
+
+        // Update chat history for current question
+        setChatHistories((prev) => ({
+          ...prev,
+          [currentChatKey]: newMessages,
+        }))
+
         setInputValue("")
-      } catch (error) {
-        setMessages([
-          ...messages,
-          { role: "assistant", content: "LLM call failed." },
-        ])
-      } finally {
         setIsSendingMessage(false)
-      }
+      }, 500)
     }
   }
 
@@ -369,15 +414,21 @@ export default function Home() {
     }, 800)
   }
 
-  const handleRunCode = () => {
-    setIsRunningCode(true)
+  const handleSubmitMath = () => {
+    setIsSubmittingMath(true)
     setTimeout(() => {
       toast({
-        title: "Code executed",
-        description: "Your code has been executed. Check the output panel for results.",
+        title: "Math solution submitted",
+        description: "Your solution has been submitted successfully.",
       })
-      setIsRunningCode(false)
-    }, 1000)
+      setIsSubmittingMath(false)
+
+      // Move to next problem if available
+      if (currentMathIndex < mathChallenges.length - 1) {
+        setCurrentMathIndex(currentMathIndex + 1)
+        setUserMathAnswer(mathChallenges[currentMathIndex + 1].defaultAnswer)
+      }
+    }, 800)
   }
 
   // Handle tab change
@@ -424,7 +475,7 @@ export default function Home() {
   // Get current section questions
   const currentReadingQuestion = readingQuestions[currentReadingIndex]
   const currentWritingPrompt = writingPrompts[currentWritingIndex]
-  const currentCodingChallenge = codingChallenges[currentCodingIndex]
+  const currentMathChallenge = mathChallenges[currentMathIndex]
 
   // Navigation for section questions
   const handleNextReadingQuestion = () => {
@@ -453,17 +504,17 @@ export default function Home() {
     }
   }
 
-  const handleNextCodingChallenge = () => {
-    if (currentCodingIndex < codingChallenges.length - 1) {
-      setCurrentCodingIndex(currentCodingIndex + 1)
-      setUserCode(codingChallenges[currentCodingIndex + 1].defaultCode)
+  const handleNextMathChallenge = () => {
+    if (currentMathIndex < mathChallenges.length - 1) {
+      setCurrentMathIndex(currentMathIndex + 1)
+      setUserMathAnswer(mathChallenges[currentMathIndex + 1].defaultAnswer)
     }
   }
 
-  const handlePrevCodingChallenge = () => {
-    if (currentCodingIndex > 0) {
-      setCurrentCodingIndex(currentCodingIndex - 1)
-      setUserCode(codingChallenges[currentCodingIndex - 1].defaultCode)
+  const handlePrevMathChallenge = () => {
+    if (currentMathIndex > 0) {
+      setCurrentMathIndex(currentMathIndex - 1)
+      setUserMathAnswer(mathChallenges[currentMathIndex - 1].defaultAnswer)
     }
   }
 
@@ -474,8 +525,8 @@ export default function Home() {
         return <BookOpen className="h-5 w-5" />
       case "writing":
         return <PenLine className="h-5 w-5" />
-      case "coding":
-        return <Code className="h-5 w-5" />
+      case "math":
+        return <Calculator className="h-5 w-5" />
       default:
         return null
     }
@@ -488,19 +539,40 @@ export default function Home() {
         return "Reading Question"
       case "writing":
         return "Writing Task"
-      case "coding":
-        return "Coding Challenge"
+      case "math":
+        return "Math Problem"
       default:
         return "Question"
     }
   }
+
+  // Get difficulty display label
+  const getDifficultyLabel = (difficulty: "elementary" | "middle" | "high") => {
+    switch (difficulty) {
+      case "elementary":
+        return "Elementary (K-5)"
+      case "middle":
+        return "Middle School (6-8)"
+      case "high":
+        return "High School (9-12)"
+      default:
+        return difficulty
+    }
+  }
+
+  // Auto-select LLM when participant is selected
+  useEffect(() => {
+    if (selectedParticipantData) {
+      setSelectedLLM(selectedParticipantData.llmDisplayName)
+    }
+  }, [selectedParticipantData])
 
   return (
     <main className="flex flex-col bg-gray-50 dark:bg-gray-900 h-screen overflow-hidden">
       <header className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-3 flex justify-between items-center shadow-sm">
         <div className="flex-1 text-center">
           <h1 className="text-xl font-semibold dark:text-white">LLM Experiment</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">People and Robots Lab</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">People and Robots Lab - Experimental Tool</p>
         </div>
         <div className="flex items-center space-x-2">
           <TooltipProvider>
@@ -554,17 +626,45 @@ export default function Home() {
               <SheetContent side="left" className="w-[80%] sm:w-[350px]">
                 <div className="space-y-4 py-4">
                   <div className="px-3 py-2">
-                    <h2 className="mb-2 text-lg font-semibold dark:text-white">Select LLM Model</h2>
-                    <Select value={selectedLLM} onValueChange={setSelectedLLM}>
-                      <SelectTrigger id="mobile-llm-select" className="w-full">
-                        <SelectValue placeholder="Select LLM" />
+                    <h2 className="mb-2 text-lg font-semibold dark:text-white">Select Participant</h2>
+                    <Select value={selectedParticipant} onValueChange={setSelectedParticipant}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose your participant number" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="gpt-4">Sarah</SelectItem>
-                        <SelectItem value="gpt-3.5">Peter</SelectItem>
-                        <SelectItem value="claude">James</SelectItem>
-                        <SelectItem value="llama">Emily</SelectItem>
-                        <SelectItem value="mistral">Michael</SelectItem>
+                        {allParticipants.length === 0 ? (
+                          <SelectItem value="none" disabled>
+                            No participants available
+                          </SelectItem>
+                        ) : (
+                          allParticipants.map((participant) => (
+                            <SelectItem key={participant.participantNumber} value={participant.participantNumber}>
+                              Participant {participant.participantNumber}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="px-3 py-2">
+                    <h2 className="mb-2 text-lg font-semibold dark:text-white">Select LLM Model</h2>
+                    <Select value={selectedLLM} onValueChange={setSelectedLLM} disabled={!selectedParticipant}>
+                      <SelectTrigger id="mobile-llm-select" className="w-full">
+                        <SelectValue
+                          placeholder={selectedParticipant ? "LLM will be assigned" : "Select participant first"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedParticipantData ? (
+                          <SelectItem value={selectedParticipantData.llmDisplayName}>
+                            {selectedParticipantData.llmDisplayName}
+                          </SelectItem>
+                        ) : (
+                          <SelectItem value="none" disabled>
+                            Select participant first
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -589,12 +689,12 @@ export default function Home() {
                         Writing
                       </Button>
                       <Button
-                        variant={activeTab === "coding" ? "default" : "ghost"}
+                        variant={activeTab === "math" ? "default" : "ghost"}
                         className="w-full justify-start"
-                        onClick={() => handleTabChange("coding")}
+                        onClick={() => handleTabChange("math")}
                       >
-                        <Code className="h-4 w-4 mr-2" />
-                        Coding
+                        <Calculator className="h-4 w-4 mr-2" />
+                        Math
                       </Button>
                       <Button
                         variant={activeTab === "mixed" ? "default" : "ghost"}
@@ -618,38 +718,75 @@ export default function Home() {
         <div className="w-full md:w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full bg-white dark:bg-gray-800 overflow-hidden">
           {!isMobile && (
             <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+              <div className="mb-3">
+                <Label htmlFor="participant-select" className="text-sm font-medium dark:text-gray-300">
+                  Select Participant
+                </Label>
+                <Select value={selectedParticipant} onValueChange={setSelectedParticipant}>
+                  <SelectTrigger id="participant-select" className="w-full mt-1">
+                    <SelectValue placeholder="Choose your participant number" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allParticipants.length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        No participants available
+                      </SelectItem>
+                    ) : (
+                      allParticipants.map((participant) => (
+                        <SelectItem key={participant.participantNumber} value={participant.participantNumber}>
+                          Participant {participant.participantNumber}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="mb-1">
                 <Label htmlFor="llm-select" className="text-sm font-medium dark:text-gray-300">
                   Select LLM Model
                 </Label>
-                <Select value={selectedLLM} onValueChange={setSelectedLLM}>
+                <Select value={selectedLLM} onValueChange={setSelectedLLM} disabled={!selectedParticipant}>
                   <SelectTrigger id="llm-select" className="w-full mt-1">
-                    <SelectValue placeholder="Select LLM" />
+                    <SelectValue
+                      placeholder={selectedParticipant ? "LLM will be assigned" : "Select participant first"}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-4">Sarah</SelectItem>
-                    <SelectItem value="gpt-3.5">Peter</SelectItem>
-                    <SelectItem value="claude">James</SelectItem>
-                    <SelectItem value="llama">Emily</SelectItem>
-                    <SelectItem value="mistral">Michael</SelectItem>
+                    {selectedParticipantData ? (
+                      <SelectItem value={selectedParticipantData.llmDisplayName}>
+                        {selectedParticipantData.llmDisplayName}
+                      </SelectItem>
+                    ) : (
+                      <SelectItem value="none" disabled>
+                        Select participant first
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
+              {selectedParticipantData && (
+                <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    Participant {selectedParticipantData.participantNumber} • {selectedParticipantData.experimentName} •{" "}
+                    {selectedParticipantData.assignedQuestions.length} questions
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {messages.length === 0 ? (
+              {currentMessages.length === 0 ? (
                 <div className="text-center text-gray-500 dark:text-gray-400 my-6">
                   <MessageSquare className="mx-auto h-10 w-10 opacity-50 mb-2" />
-                  <p>No messages yet.</p>
+                  <p>No messages yet. Start a conversation!</p>
                   <p className="text-sm mt-2 max-w-xs mx-auto">
-                    For reference only
+                    Ask questions about the tasks or request assistance with the reading, writing, or math exercises.
                   </p>
                 </div>
               ) : (
-                messages.map((message, index) => (
+                currentMessages.map((message, index) => (
                   <div
                     key={index}
                     className={`p-3 rounded-lg ${
@@ -728,11 +865,11 @@ export default function Home() {
                     Writing
                   </TabsTrigger>
                   <TabsTrigger
-                    value="coding"
+                    value="math"
                     className="data-[state=active]:bg-gray-100 dark:data-[state=active]:bg-gray-700 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 px-6 py-3"
                   >
-                    <Code className="h-4 w-4 mr-2" />
-                    Coding
+                    <Calculator className="h-4 w-4 mr-2" />
+                    Math
                   </TabsTrigger>
                   <TabsTrigger
                     value="mixed"
@@ -822,12 +959,14 @@ export default function Home() {
                         />
                       </div>
 
-                      <Button className="w-full" onClick={handleSubmitAnswers} disabled={isSubmittingAnswers}>
-                        {isSubmittingAnswers ? (
-                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        ) : null}
-                        Submit Answers
-                      </Button>
+                      {currentReadingIndex === readingQuestions.length - 1 && (
+                        <Button className="w-full" onClick={handleSubmitAnswers} disabled={isSubmittingAnswers}>
+                          {isSubmittingAnswers ? (
+                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          ) : null}
+                          Submit All Reading Answers
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -887,41 +1026,43 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <Button className="w-full" onClick={handleSubmitEssay} disabled={isSubmittingEssay}>
-                        {isSubmittingEssay ? (
-                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        ) : null}
-                        Submit Essay
-                      </Button>
+                      {currentWritingIndex === writingPrompts.length - 1 && (
+                        <Button className="w-full" onClick={handleSubmitEssay} disabled={isSubmittingEssay}>
+                          {isSubmittingEssay ? (
+                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          ) : null}
+                          Submit All Essays
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="coding" className="p-3 md:p-5 m-0">
+              <TabsContent value="math" className="p-3 md:p-5 m-0">
                 <Card className="border-gray-200 dark:border-gray-700 dark:bg-gray-800">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-center">
                       <div>
-                        <CardTitle className="text-lg md:text-xl dark:text-white">Coding Challenge</CardTitle>
+                        <CardTitle className="text-lg md:text-xl dark:text-white">Math Problem</CardTitle>
                         <CardDescription className="dark:text-gray-400">
-                          Challenge {currentCodingIndex + 1} of {codingChallenges.length}
+                          Problem {currentMathIndex + 1} of {mathChallenges.length}
                         </CardDescription>
                       </div>
                       <div className="flex space-x-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={handlePrevCodingChallenge}
-                          disabled={currentCodingIndex === 0}
+                          onClick={handlePrevMathChallenge}
+                          disabled={currentMathIndex === 0}
                         >
                           Previous
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={handleNextCodingChallenge}
-                          disabled={currentCodingIndex === codingChallenges.length - 1}
+                          onClick={handleNextMathChallenge}
+                          disabled={currentMathIndex === mathChallenges.length - 1}
                         >
                           Next
                         </Button>
@@ -933,62 +1074,44 @@ export default function Home() {
                       <div className="p-3 md:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <h3 className="font-medium mb-2 text-sm md:text-base dark:text-gray-200">Problem Statement</h3>
                         <p className="text-xs md:text-sm leading-relaxed dark:text-gray-300">
-                          {currentCodingChallenge.problem}
+                          {currentMathChallenge.problem}
                         </p>
                         <div className="mt-3">
                           <p className="text-xs md:text-sm font-medium dark:text-gray-200">Example:</p>
                           <pre className="text-xs bg-gray-100 dark:bg-gray-600 p-2 rounded mt-1 overflow-x-auto dark:text-gray-300">
-                            {currentCodingChallenge.example}
+                            {currentMathChallenge.example}
                           </pre>
                         </div>
                       </div>
 
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
-                          <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                            <SelectTrigger className="w-[140px] md:w-[180px] text-xs md:text-sm">
-                              <SelectValue placeholder="Select Language" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="javascript">JavaScript</SelectItem>
-                              <SelectItem value="python">Python</SelectItem>
-                              <SelectItem value="java">Java</SelectItem>
-                              <SelectItem value="cpp">C++</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <CodeEditor
-                          language={selectedLanguage}
-                          value={userCode}
-                          onChange={setUserCode}
-                          height={isMobile ? 180 : 280}
+                        <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
+                        <Textarea
+                          placeholder="Show your work here..."
+                          value={userMathAnswer}
+                          onChange={(e) => setUserMathAnswer(e.target.value)}
+                          className="min-h-[200px] md:min-h-[280px] text-xs md:text-sm dark:bg-gray-700 dark:text-gray-200 dark:placeholder:text-gray-400 font-mono"
                         />
                       </div>
 
-                      <div className="flex space-x-3">
-                        <Button className="flex-1" onClick={handleRunCode} disabled={isRunningCode}>
-                          {isRunningCode ? (
+                      {currentMathIndex === mathChallenges.length - 1 ? (
+                        <Button className="w-full" onClick={handleSubmitMath} disabled={isSubmittingMath}>
+                          {isSubmittingMath ? (
                             <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                           ) : null}
-                          Run Code
+                          Submit All Math Solutions
                         </Button>
-                        <Button
-                          className="flex-1"
-                          variant="outline"
-                          onClick={() => setUserCode(currentCodingChallenge.defaultCode)}
-                        >
-                          Reset
-                        </Button>
-                      </div>
-
-                      <div className="p-3 border rounded-lg dark:border-gray-600 dark:bg-gray-700">
-                        <h3 className="text-xs md:text-sm font-medium mb-2 dark:text-gray-200">Output</h3>
-                        <pre className="text-xs bg-gray-100 dark:bg-gray-600 p-2 rounded overflow-x-auto dark:text-gray-300">
-                          // Output will appear here after running your code
-                        </pre>
-                      </div>
+                      ) : (
+                        <div className="flex space-x-3">
+                          <Button
+                            className="flex-1"
+                            variant="outline"
+                            onClick={() => setUserMathAnswer(currentMathChallenge.defaultAnswer)}
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1035,6 +1158,9 @@ export default function Home() {
                           <h3 className="text-sm font-medium dark:text-gray-200">
                             {getQuestionTypeLabel(currentQuestion.type)}
                           </h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {getDifficultyLabel(currentQuestion.difficulty)}
+                          </p>
                         </div>
                       </div>
 
@@ -1075,37 +1201,27 @@ export default function Home() {
                         </div>
                       )}
 
-                      {currentQuestion.type === "coding" && (
+                      {currentQuestion.type === "math" && (
                         <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
-                            <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                              <SelectTrigger className="w-[140px] md:w-[180px] text-xs md:text-sm">
-                                <SelectValue placeholder="Select Language" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="javascript">JavaScript</SelectItem>
-                                <SelectItem value="python">Python</SelectItem>
-                                <SelectItem value="java">Java</SelectItem>
-                                <SelectItem value="cpp">C++</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <CodeEditor
-                            language={selectedLanguage}
+                          <h3 className="font-medium text-sm md:text-base dark:text-gray-200">Your Solution</h3>
+                          <Textarea
+                            placeholder="Show your work here..."
                             value={currentMixedAnswer}
-                            onChange={handleMixedAnswerChange}
-                            height={250}
+                            onChange={(e) => handleMixedAnswerChange(e.target.value)}
+                            rows={8}
+                            className="text-sm dark:bg-gray-700 dark:text-gray-200 dark:placeholder:text-gray-400 font-mono"
                           />
                         </div>
                       )}
 
-                      <Button className="w-full" onClick={handleSubmitAllMixed} disabled={isSubmittingMixed}>
-                        {isSubmittingMixed ? (
-                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        ) : null}
-                        Submit
-                      </Button>
+                      {currentQuestionIndex === mixedQuestions.length - 1 && (
+                        <Button className="w-full" onClick={handleSubmitAllMixed} disabled={isSubmittingMixed}>
+                          {isSubmittingMixed ? (
+                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          ) : null}
+                          Submit All Mixed Answers
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1145,13 +1261,13 @@ export default function Home() {
             Writing
           </Button>
           <Button
-            variant={activeTab === "coding" ? "default" : "ghost"}
+            variant={activeTab === "math" ? "default" : "ghost"}
             size="sm"
             className="flex-1 mx-1"
-            onClick={() => handleTabChange("coding")}
+            onClick={() => handleTabChange("math")}
           >
-            <Code className="h-4 w-4 mr-1" />
-            Coding
+            <Calculator className="h-4 w-4 mr-1" />
+            Math
           </Button>
           <Button
             variant={activeTab === "mixed" ? "default" : "ghost"}

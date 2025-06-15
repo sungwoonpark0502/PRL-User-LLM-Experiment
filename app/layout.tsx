@@ -9,7 +9,6 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "LLM Experiment Interface",
   description: "An interface for LLM-based experiments with reading, writing, and coding tasks",
-    generator: 'v0.dev'
 }
 
 export default function RootLayout({

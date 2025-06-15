@@ -17,8 +17,8 @@ import { Label } from "@/components/ui/label"
 // Define the expected structure of questions in the uploaded file
 interface QuestionImport {
   question: string
-  section: "reading" | "writing" | "coding" | "mixed"
-  difficulty: "easy" | "medium" | "hard"
+  section: "reading" | "writing" | "math" | "mixed"
+  difficulty: "elementary" | "middle" | "high"
   image?: string // Add image property
 }
 
@@ -103,6 +103,8 @@ export function FileUploadParser({ onQuestionsImported, onClose }: FileUploadPar
             throw new Error("JSON file must contain an array of questions")
           }
         } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls") || fileName.endsWith(".csv")) {
+          // For this demo, we'll simulate parsing Excel/CSV files
+          // In a real implementation, you would use libraries like xlsx, exceljs, or papaparse
 
           toast({
             title: "Demo Mode",
@@ -131,20 +133,20 @@ export function FileUploadParser({ onQuestionsImported, onClose }: FileUploadPar
             return
           }
 
-          if (!["reading", "writing", "coding", "mixed"].includes(item.section)) {
+          if (!["reading", "writing", "math", "mixed"].includes(item.section)) {
             errors.push(`Question ${index + 1}: Invalid section "${item.section}"`)
             return
           }
 
-          if (!["easy", "medium", "hard"].includes(item.difficulty)) {
+          if (!["elementary", "middle", "high"].includes(item.difficulty)) {
             errors.push(`Question ${index + 1}: Invalid difficulty "${item.difficulty}"`)
             return
           }
 
           validQuestions.push({
             question: item.question,
-            section: item.section as "reading" | "writing" | "coding" | "mixed",
-            difficulty: item.difficulty as "easy" | "medium" | "hard",
+            section: item.section as "reading" | "writing" | "math" | "mixed",
+            difficulty: item.difficulty as "elementary" | "middle" | "high",
           })
         })
 
